@@ -1,0 +1,28 @@
+meta {
+  name: Get Character
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{apiUrl}}/characters/1
+  body: none
+  auth: none
+}
+
+tests {
+  test("should return 200 if character exists", function() {
+    if (res.getStatus() === 200) {
+      const body = res.getBody();
+      expect(body).to.have.property("id");
+      expect(body).to.have.property("name");
+      expect(body).to.have.property("createdAt");
+    }
+  });
+  
+  test("should return 404 if character doesn't exist", function() {
+    if (res.getStatus() === 404) {
+      expect(res.getBody().error).to.equal("Not Found");
+    }
+  });
+}

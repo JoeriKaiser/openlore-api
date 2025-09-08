@@ -1,0 +1,24 @@
+meta {
+  name: API Info
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/
+  body: none
+  auth: none
+}
+
+tests {
+  test("should return 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("should return API info", function() {
+    const body = res.getBody();
+    expect(body.name).to.equal("OpenLore API");
+    expect(body.version).to.equal("0.1.0");
+    expect(body.endpoints).to.be.an("array");
+  });
+}

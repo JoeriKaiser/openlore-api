@@ -1,0 +1,15 @@
+{
+  "version": "1",
+  "name": "OpenLore API",
+  "type": "collection",
+  "ignore": [
+    "node_modules",
+    ".git"
+  ],
+  "preRequestScript": "",
+  "postResponseScript": "",
+  "environmentVariables": {
+    "baseUrl": "http://localhost:3000",
+    "token": ""
+  }
+}

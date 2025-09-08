@@ -1,0 +1,42 @@
+meta {
+  name: Create Character
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{apiUrl}}/characters
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "name": "Aragorn",
+    "bio": "Ranger of the North, heir to the throne of Gondor"
+  }
+}
+
+tests {
+  test("should return 201", function() {
+    expect(res.getStatus()).to.equal(201);
+  });
+  
+  test("should return created character", function() {
+    const body = res.getBody();
+    expect(body).to.have.property("id");
+    expect(body.name).to.equal("Aragorn");
+    expect(body.bio).to.equal("Ranger of the North, heir to the throne of Gondor");
+    expect(body).to.have.property("createdAt");
+  });
+  
+  // Store the created character ID for use in other requests
+  test("should store character ID", function() {
+    const body = res.getBody();
+    bru.setVar("createdCharacterId", body.id);
+  });
+}

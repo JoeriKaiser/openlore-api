@@ -1,0 +1,22 @@
+meta {
+  name: Delete Character
+  type: http
+  seq: 5
+}
+
+delete {
+  url: {{apiUrl}}/characters/{{createdCharacterId}}
+  body: none
+  auth: none
+}
+
+tests {
+  test("should return 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("should return success response", function() {
+    const body = res.getBody();
+    expect(body.ok).to.equal(true);
+  });
+}

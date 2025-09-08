@@ -1,0 +1,32 @@
+meta {
+  name: List Characters
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{apiUrl}}/characters
+  body: none
+  auth: none
+}
+
+tests {
+  test("should return 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("should return array of characters", function() {
+    const body = res.getBody();
+    expect(body).to.be.an("array");
+  });
+  
+  test("each character should have required fields", function() {
+    const characters = res.getBody();
+    if (characters.length > 0) {
+      const character = characters[0];
+      expect(character).to.have.property("id");
+      expect(character).to.have.property("name");
+      expect(character).to.have.property("createdAt");
+    }
+  });
+}

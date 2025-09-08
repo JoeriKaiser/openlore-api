@@ -1,0 +1,34 @@
+meta {
+  name: Update Character
+  type: http
+  seq: 4
+}
+
+patch {
+  url: {{apiUrl}}/characters/{{createdCharacterId}}
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "name": "Aragorn II",
+    "bio": "King of Gondor and Arnor, Ranger of the North"
+  }
+}
+
+tests {
+  test("should return 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("should return updated character", function() {
+    const body = res.getBody();
+    expect(body.name).to.equal("Aragorn II");
+    expect(body.bio).to.equal("King of Gondor and Arnor, Ranger of the North");
+  });
+}

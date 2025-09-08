@@ -1,0 +1,1 @@
+ALTER TABLE `account` ADD `updatedAt` integer DEFAULT CURRENT_TIMESTAMP NOT NULL;
