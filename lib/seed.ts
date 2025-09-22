@@ -12,10 +12,8 @@ async function seed() {
   const sessionToken = "seed_session_token_" + Date.now();
 
   try {
-    // Hash the password using Better Auth's hashing function
     const hashedPassword = await hashPassword(seedUserPassword);
 
-    // Check if seed user already exists
     const existingSeedUser = await db
       .select()
       .from(schema.user)
@@ -49,17 +47,14 @@ async function seed() {
       user = existingSeedUser[0];
     }
 
-    // Create or update account for password authentication
     const accountId = `acc_${seedUserId}`;
     
-    // Check by account ID first (primary key)
     const existingAccountById = await db
       .select()
       .from(schema.account)
       .where(eq(schema.account.id, accountId))
       .limit(1);
 
-    // Also check by user and provider combination
     const existingAccountByUser = await db
       .select()
       .from(schema.account)
@@ -75,8 +70,8 @@ async function seed() {
       console.log("🔐 Creating credential account for seed user...");
       await db.insert(schema.account).values({
         id: accountId,
-        accountId: seedUserEmail, // For credentials, this is typically the email
-        providerId: "credential", // Better Auth uses "credential" for email/password
+        accountId: seedUserEmail,
+        providerId: "credential",
         userId: seedUserId,
         accessToken: null,
         refreshToken: null,
@@ -90,26 +85,8 @@ async function seed() {
       console.log(`   Account ID: ${accountId}`);
       console.log(`   Provider ID: credential`);
       console.log(`   User Email: ${seedUserEmail}`);
-    } else {
-      const existingAccount = existingAccountById[0] || existingAccountByUser[0];
-      console.log("🔐 Credential account already exists, updating password...");
-      console.log(`   Existing Account ID: ${existingAccount.id}`);
-      console.log(`   Existing Provider ID: ${existingAccount.providerId}`);
-      console.log(`   Existing Account ID field: ${existingAccount.accountId}`);
-      
-      await db
-        .update(schema.account)
-        .set({
-          password: hashedPassword,
-          accountId: seedUserEmail, // Ensure this matches the email
-          providerId: "credential", // Ensure provider is correct
-          updatedAt: new Date(),
-        })
-        .where(eq(schema.account.id, existingAccount.id));
-      console.log("✅ Password and account details updated.");
     }
 
-    // Create a session for easy login testing
     const existingSession = await db
       .select()
       .from(schema.session)
@@ -119,7 +96,7 @@ async function seed() {
     if (existingSession.length === 0) {
       console.log("🔑 Creating session for seed user...");
       const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + 30); // 30 days from now
+      expiresAt.setDate(expiresAt.getDate() + 30);
 
       await db.insert(schema.session).values({
         id: `session_${seedUserId}`,
@@ -134,14 +111,12 @@ async function seed() {
       console.log(`✅ Session created with token: ${sessionToken}`);
     } else {
       console.log("🔑 Session already exists for seed user.");
-      console.log(`   Existing token: ${existingSession[0].token}`);
+      console.log(`   Existing token: ${existingSession[0]?.token}`);
     }
 
-    // Clean existing seed data to avoid duplicates
     await db.delete(schema.characters).where(eq(schema.characters.userId, seedUserId));
     await db.delete(schema.lore).where(eq(schema.lore.userId, seedUserId));
 
-    // Insert characters
     console.log("🎭 Inserting characters...");
     await db.insert(schema.characters).values([
       {
@@ -167,7 +142,6 @@ async function seed() {
     ]);
     console.log("✅ Characters inserted.");
 
-    // Insert lore entries
     console.log("📚 Inserting lore entries...");
     await db.insert(schema.lore).values([
       {
@@ -207,7 +181,6 @@ async function seed() {
   }
 }
 
-// Execute seed function
 seed()
   .then(() => {
     console.log("✨ Seeding process completed successfully.");

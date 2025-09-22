@@ -1,52 +1,150 @@
 import { Router } from "../utils/router";
 import { auth } from "../../lib/auth";
-import { badRequest, json, readJson, CORS_HEADERS } from "../utils/http";
+import { json, readJson, CORS_HEADERS } from "../utils/http";
 
-type RegisterBody = {
+interface RegisterBody {
   email: string;
   password: string;
   name: string;
   image?: string;
   callbackURL?: string;
   rememberMe?: boolean;
-};
+}
 
-type LoginBody = {
+interface LoginBody {
   email: string;
   password: string;
   callbackURL?: string;
   rememberMe?: boolean;
-};
-
-function withCors(response: Response): Promise<Response> {
-  return (async () => {
-    const body = await response.text();
-    const headers = new Headers(response.headers);
-    Object.entries(CORS_HEADERS).forEach(([k, v]) => headers.set(k, v));
-    return new Response(body, {
-      status: response.status,
-      headers,
-    });
-  })();
 }
 
-export function registerAuthRoutes(router: Router) {
+interface User {
+  id: string;
+  email: string;
+  name: string;
+  emailVerified: boolean;
+  image?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface SessionData {
+  user?: User & {
+    firstName?: string;
+    username?: string;
+    avatar?: string;
+  };
+  session?: {
+    session?: {
+      expiresAt: string;
+      token: string;
+      createdAt: string;
+      updatedAt: string;
+      ipAddress: string;
+      userAgent: string;
+      userId: string;
+      id: string;
+    };
+    user?: {
+      name: string;
+      email: string;
+      emailVerified: boolean;
+      image?: string | null;
+      createdAt: string;
+      updatedAt: string;
+      id: string;
+    };
+  };
+}
+
+interface SessionResponse {
+  user: User | null;
+  token: string | null;
+  session: { active: boolean };
+}
+
+async function withCors(response: Response): Promise<Response> {
+  const headers = new Headers(response.headers);
+  Object.entries(CORS_HEADERS).forEach(([key, value]) => {
+    headers.set(key, value);
+  });
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+function extractTokenFromCookies(cookieHeader?: string | null): string | null {
+  if (!cookieHeader) return null;
+  const cookieMatch = cookieHeader.match(/better-auth\.session_data=([^;]+)/);
+  const token = cookieMatch?.[1];
+  return token && token.length > 10 ? token : null;
+}
+
+function validateEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+}
+
+function validatePassword(password: string): boolean {
+  return password.length >= 8;
+}
+
+function validateName(name: string): boolean {
+  return name.trim().length >= 2;
+}
+
+function createAuthError(message: string, status: number = 400): Response {
+  return json(
+    {
+      error: message,
+      timestamp: new Date().toISOString(),
+    },
+    status,
+  );
+}
+
+function normalizeUserData(
+  sessionData: SessionData | null | undefined,
+): User | null {
+  if (!sessionData) return null;
+
+  const user = sessionData.session?.user || sessionData.user;
+
+  if (!user?.id || !user.email) return null;
+
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    emailVerified: Boolean(user.emailVerified),
+    image: user.image ?? undefined,
+    createdAt: user.createdAt || new Date().toISOString(),
+    updatedAt: user.updatedAt || new Date().toISOString(),
+  };
+}
+
+export function registerAuthRoutes(router: Router): void {
   router.on("POST", "/api/auth/register", async ({ req }) => {
     try {
-      const body = await readJson<RegisterBody>(req);
-      const { email, password, name, image, callbackURL, rememberMe } = body;
+      const { email, password, name, image, callbackURL, rememberMe } =
+        await readJson<RegisterBody>(req);
 
-      if (!email || !password || !name) {
-        return badRequest(
-          "Email, password, and name are required for registration."
-        );
+      if (!validateEmail(email)) {
+        return createAuthError("Valid email is required");
+      }
+      if (!validatePassword(password)) {
+        return createAuthError("Password must be at least 8 characters");
+      }
+      if (!validateName(name)) {
+        return createAuthError("Name must be at least 2 characters");
       }
 
       const result = await auth.api.signUpEmail({
         body: {
-          email,
+          email: email.toLowerCase().trim(),
           password,
-          name,
+          name: name.trim(),
           image,
           callbackURL,
           rememberMe,
@@ -56,24 +154,28 @@ export function registerAuthRoutes(router: Router) {
       });
 
       return withCors(result);
-    } catch (error: any) {
-      console.error("Registration error:", error);
-      return json({ error: error?.message || "Registration failed" }, 400);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Registration failed";
+      return createAuthError(message, 400);
     }
   });
 
   router.on("POST", "/api/auth/login", async ({ req }) => {
     try {
-      const body = await readJson<LoginBody>(req);
-      const { email, password, callbackURL, rememberMe } = body;
+      const { email, password, callbackURL, rememberMe } =
+        await readJson<LoginBody>(req);
 
-      if (!email || !password) {
-        return badRequest("Email and password are required for login.");
+      if (!validateEmail(email)) {
+        return createAuthError("Valid email is required", 401);
+      }
+      if (!password) {
+        return createAuthError("Password is required", 401);
       }
 
       const result = await auth.api.signInEmail({
         body: {
-          email,
+          email: email.toLowerCase().trim(),
           password,
           callbackURL,
           rememberMe,
@@ -83,52 +185,57 @@ export function registerAuthRoutes(router: Router) {
       });
 
       return withCors(result);
-    } catch (error: any) {
-      console.error("Login error:", error);
-      return json({ error: error?.message || "Login failed" }, 401);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Login failed";
+      return createAuthError(message, 401);
     }
   });
 
-  // Let Better Auth handle session endpoint so cookie cache/rotation headers are preserved
   router.on("GET", "/api/auth/session", async ({ req }) => {
-    console.log("Handling session endpoint", req.headers.get("cookie"));
+    try {
+      const res = await auth.api.getSession({
+        headers: req.headers,
+        asResponse: true,
+      });
 
-    const res = await auth.api.getSession({
-      headers: req.headers,
-      asResponse: true,
-    });
+      const token =
+        extractTokenFromCookies(res.headers.get("set-cookie")) ||
+        extractTokenFromCookies(req.headers.get("cookie"));
 
-    console.log("RESPONSE", res);
+      let user: User | null = null;
 
-    const sessionData = await res.json();
+      const responseData: SessionResponse = {
+        user,
+        token,
+        session: { active: Boolean(token) },
+      };
 
-    const setCookieHeader = res.headers.get('set-cookie');
-    let token = null;
-
-    if (setCookieHeader) {
-      const cookieMatch = setCookieHeader.match(/better-auth\.session_data=([^;]+)/);
-      token = cookieMatch ? cookieMatch[1] : null;
-    }
-
-    if (!token) {
-      const cookieHeader = req.headers.get('cookie');
-      if (cookieHeader) {
-        const cookieMatch = cookieHeader.match(/better-auth\.session_data=([^;]+)/);
-        token = cookieMatch ? cookieMatch[1] : null;
+      const headers = new Headers();
+      headers.set("Content-Type", "application/json");
+      const setCookieHeader = res.headers.get("set-cookie");
+      if (setCookieHeader) {
+        headers.set("Set-Cookie", setCookieHeader);
       }
+
+      return withCors(
+        new Response(JSON.stringify(responseData), {
+          status: res.status,
+          headers,
+        }),
+      );
+    } catch (error) {
+      const responseData: SessionResponse = {
+        user: null,
+        token: null,
+        session: { active: false },
+      };
+      return withCors(
+        new Response(JSON.stringify(responseData), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
     }
-
-    const responseData = {
-      token: token
-    };
-
-    return withCors(new Response(JSON.stringify(responseData), {
-      status: res.status,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(setCookieHeader ? { 'Set-Cookie': setCookieHeader } : {})
-      }
-    }));
   });
 
   router.on("POST", "/api/auth/logout", async ({ req }) => {
@@ -138,20 +245,26 @@ export function registerAuthRoutes(router: Router) {
         asResponse: true,
       });
       return withCors(result);
-    } catch (error: any) {
-      console.error("Logout error:", error);
-      return json({ error: error?.message || "Logout failed" }, 500);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Logout failed";
+      return createAuthError(message, 500);
     }
   });
 
-  // Generic handlers for any other better-auth routes
-  router.on("GET", "/api/auth/*", async ({ req }) => {
-    const res = await auth.handler(req);
-    return withCors(res);
-  });
+  const handleGenericAuth = async ({
+    req,
+  }: {
+    req: Request;
+  }): Promise<Response> => {
+    try {
+      return withCors(await auth.handler(req));
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Authentication failed";
+      return withCors(createAuthError(message, 500));
+    }
+  };
 
-  router.on("POST", "/api/auth/*", async ({ req }) => {
-    const res = await auth.handler(req);
-    return withCors(res);
-  });
+  router.on("GET", "/api/auth/*", handleGenericAuth);
+  router.on("POST", "/api/auth/*", handleGenericAuth);
 }
