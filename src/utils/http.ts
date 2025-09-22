@@ -1,7 +1,8 @@
 import type { HeadersInit } from "bun";
+import { config } from "../../lib/env";
 
 export const CORS_HEADERS: Record<string, string> = {
-  "Access-Control-Allow-Origin": process.env.CLIENT_URL ?? "",
+  "Access-Control-Allow-Origin": config.clientUrl,
   "Access-Control-Allow-Methods": "GET,POST,PATCH,DELETE,OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
   "Access-Control-Allow-Credentials": "true",

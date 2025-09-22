@@ -2,21 +2,7 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { db } from "./db";
 import * as schema from "./schema";
-
-const isDev = process.env.NODE_ENV !== "production";
-
-const clientUrl = process.env.CLIENT_URL || "http://localhost:5173";
-const baseURL = process.env.BETTER_AUTH_URL || "http://localhost:3000";
-
-function getOrigin(url: string) {
-  try {
-    return new URL(url).origin;
-  } catch {
-    return url;
-  }
-}
-
-const isCrossSite = getOrigin(clientUrl) !== getOrigin(baseURL);
+import { config } from "./env";
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
@@ -28,40 +14,48 @@ export const auth = betterAuth({
       verification: schema.verification,
     },
   }),
-
   emailAndPassword: {
     enabled: true,
     requireEmailVerification: false,
   },
-
   session: {
-    expiresIn: 60 * 60 * 24 * 7, // 7 days
-    updateAge: 60 * 60 * 24, // 1 day
+    expiresIn: 60 * 60 * 24 * 7,
+    updateAge: 60 * 60 * 24,
     cookieCache: {
       enabled: true,
-      maxAge: 60 * 60 * 24 * 7, // 7 days
+      maxAge: 60 * 5,
     },
   },
-
-  trustedOrigins: [clientUrl, baseURL],
-
-  secret:
-    process.env.BETTER_AUTH_SECRET || "dev-insecure-secret-change-me",
-
-  baseURL,
-
+  baseURL: config.baseUrl,
+  basePath: "/api/auth",
+  trustedOrigins: config.trustedOrigins,
+  secret: config.authSecret,
   advanced: {
+    useSecureCookies: config.isProd || config.isCrossSite,
     cookies: {
       session_token: {
         attributes: {
           httpOnly: true,
           path: "/",
-          sameSite: isCrossSite ? "none" : "lax",
-          secure: !isDev, // must be true in production (HTTPS)
+          sameSite: config.isCrossSite ? "none" : "lax",
+          secure: config.isProd || config.isCrossSite,
+        },
+      },
+      session_data: {
+        attributes: {
+          httpOnly: true,
+          path: "/",
+          sameSite: config.isCrossSite ? "none" : "lax",
+          secure: config.isProd || config.isCrossSite,
         },
       },
     },
     generateId: () => crypto.randomUUID(),
+  },
+  security: {
+    ipAddress: {
+      ipAddressHeaders: ["cf-connecting-ip", "x-forwarded-for"],
+    },
   },
 });
 

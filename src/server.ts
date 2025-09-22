@@ -1,22 +1,17 @@
 import { Router } from "./utils/router";
 import { json, CORS_HEADERS, noContent, notFound } from "./utils/http";
 import { registerRoutes } from "./routes";
-
-console.log("Starting server initialization...");
+import { config } from "../lib/env";
 
 const router = new Router();
 registerRoutes(router);
 
-const port = Number(Bun.env.PORT ?? 3000);
-
-console.log(`Attempting to start server on port ${port}...`);
+const port = config.port;
 
 try {
   const server = Bun.serve({
     port,
     fetch: async (req) => {
-      console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
-
       if (req.method === "OPTIONS") {
         return noContent({ headers: CORS_HEADERS });
       }
@@ -47,25 +42,25 @@ try {
               "GET /api/lore/:id",
               "PATCH /api/lore/:id",
               "DELETE /api/lore/:id",
+              "POST /api/auth/register",
+              "POST /api/auth/login",
+              "GET /api/auth/session",
+              "POST /api/auth/logout",
             ],
           });
         }
 
         return notFound();
-      } catch (err) {
-        console.error("Request handling error:", err);
+      } catch {
         return json({ error: "Internal Server Error" }, { status: 500 });
       }
     },
-    error(error) {
-      console.error("Server error:", error);
+    error() {
       return new Response("Server Error", { status: 500 });
     },
   });
 
-  console.log(`✅ OpenLore API successfully started!`);
-  console.log(`🚀 Server listening on http://localhost:${server.port}`);
-  console.log(`📊 Health check: http://localhost:${server.port}/health`);
+  console.log(`OpenLore API listening on http://localhost:${server.port}`);
 } catch (error) {
   console.error("Failed to start server:", error);
   process.exit(1);

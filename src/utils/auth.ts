@@ -12,20 +12,17 @@ export async function getSession(req: Request) {
   }
 }
 
+export async function getCurrentUser(req: Request) {
+  const session = await getSession(req);
+  return session?.user ?? null;
+}
+
 export function requireAuth() {
   return async (req: Request): Promise<Response | null> => {
     const session = await getSession(req);
-
     if (!session) {
       return json({ error: "Unauthorized" }, 401);
     }
-
-    return null; // Continue to next handler
+    return null;
   };
-}
-
-// Utility to get user from request
-export async function getCurrentUser(req: Request) {
-  const session = await getSession(req);
-  return session?.user || null;
 }

@@ -13,11 +13,7 @@ export async function listLore(req: Request) {
     return json({ error: "Unauthorized" }, 401);
   }
 
-  const rows = await db
-    .select()
-    .from(lore)
-    .where(eq(lore.userId, user.id));
-
+  const rows = await db.select().from(lore).where(eq(lore.userId, user.id));
   return json(rows);
 }
 
@@ -62,7 +58,7 @@ export async function createLore(req: Request) {
     .values({
       title: body.title,
       content: body.content,
-      userId: user.id
+      userId: user.id,
     })
     .returning();
 
@@ -89,8 +85,7 @@ export async function updateLore(req: Request, idParam: string) {
   if (body.title !== undefined) payload.title = body.title;
   if (body.content !== undefined) payload.content = body.content;
 
-  if (Object.keys(payload).length === 0)
-    return badRequest("No fields to update");
+  if (Object.keys(payload).length === 0) return badRequest("No fields to update");
 
   const [updated] = await db
     .update(lore)
