@@ -9,12 +9,8 @@ export const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Max-Age": "86400",
 };
 
-export function json(
-  data: unknown,
-  init: number | ResponseInit = 200
-): Response {
-  const base: ResponseInit =
-    typeof init === "number" ? { status: init } : init ?? {};
+export function json(data: unknown, init: number | ResponseInit = 200): Response {
+  const base: ResponseInit = typeof init === "number" ? { status: init } : init ?? {};
   const headers = new Headers(base.headers as HeadersInit);
   headers.set("content-type", "application/json; charset=utf-8");
   Object.entries(CORS_HEADERS).forEach(([k, v]) => headers.set(k, v));
@@ -41,4 +37,33 @@ export async function readJson<T>(req: Request): Promise<T> {
   } catch {
     throw new Error("Invalid JSON body");
   }
+}
+
+export function createSSE() {
+  const ts = new TransformStream<Uint8Array, Uint8Array>();
+  const writer = ts.writable.getWriter();
+  const encoder = new TextEncoder();
+
+  const headers = new Headers({
+    "content-type": "text/event-stream; charset=utf-8",
+    "cache-control": "no-cache",
+    connection: "keep-alive",
+  });
+  Object.entries(CORS_HEADERS).forEach(([k, v]) => headers.set(k, v));
+
+  const response = new Response(ts.readable, { status: 200, headers });
+
+  async function write(event: string, data?: unknown) {
+    let chunk = "";
+    if (event) chunk += `event: ${event}\n`;
+    if (data !== undefined) chunk += `data: ${JSON.stringify(data)}\n`;
+    chunk += `\n`;
+    await writer.write(encoder.encode(chunk));
+  }
+
+  async function close() {
+    await writer.close();
+  }
+
+  return { response, write, close };
 }

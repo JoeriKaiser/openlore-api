@@ -46,6 +46,15 @@ try {
               "POST /api/auth/login",
               "GET /api/auth/session",
               "POST /api/auth/logout",
+              "POST /api/ai/providers/openrouter/key",
+              "GET /api/ai/providers/openrouter/key",
+              "DELETE /api/ai/providers/openrouter/key",
+              "GET /api/ai/models",
+              "POST /api/chat/stream",
+              "GET /api/chats",
+              "GET /api/chats/:id/messages",
+              "PATCH /api/chats/:id",
+              "DELETE /api/chats/:id",
             ],
           });
         }

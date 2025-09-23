@@ -13,22 +13,23 @@ const isProd = nodeEnv === "production";
 
 const clientUrl = env.CLIENT_URL ?? "http://localhost:5173";
 const baseUrl = env.BETTER_AUTH_URL ?? "http://localhost:3000";
-const corsOrigins =
-  (env.CORS_ORIGINS ?? clientUrl)
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+const corsOrigins = (env.CORS_ORIGINS ?? clientUrl)
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
 
 const trustedOrigins = Array.from(
   new Set([toOrigin(clientUrl), toOrigin(baseUrl), ...corsOrigins.map(toOrigin)])
 );
 
 const authSecret =
-  env.BETTER_AUTH_SECRET ||
-  env.AUTH_SECRET ||
-  "dev-insecure-secret-change-me";
+  env.BETTER_AUTH_SECRET || env.AUTH_SECRET || "dev-insecure-secret-change-me";
 
 const port = Number(env.PORT ?? 3000);
+
+const encryptionSecret = env.ENCRYPTION_SECRET || authSecret;
+
+const openRouterReferer = env.OPENROUTER_REFERER ?? clientUrl;
 
 export const config = {
   nodeEnv,
@@ -40,4 +41,6 @@ export const config = {
   authSecret,
   port,
   isCrossSite: toOrigin(clientUrl) !== toOrigin(baseUrl),
+  encryptionSecret,
+  openRouterReferer,
 };
