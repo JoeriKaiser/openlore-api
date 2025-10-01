@@ -4,7 +4,7 @@ import {
   sqliteTable,
   text,
   index,
-  uniqueIndex,
+  uniqueIndex
 } from "drizzle-orm/sqlite-core";
 
 export const user = sqliteTable("user", {
@@ -16,14 +16,14 @@ export const user = sqliteTable("user", {
     .default(false),
   image: text("image"),
   createdAt: integer("createdAt", { mode: "timestamp" }).notNull(),
-  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull(),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull()
 });
 
 export const characters = sqliteTable(
   "characters",
   {
     id: integer("id", { mode: "number" }).primaryKey({
-      autoIncrement: true,
+      autoIncrement: true
     }),
     name: text("name").notNull(),
     bio: text("bio"),
@@ -32,12 +32,12 @@ export const characters = sqliteTable(
       .references(() => user.id),
     createdAt: text("created_at")
       .default(sql`CURRENT_TIMESTAMP`)
-      .notNull(),
+      .notNull()
   },
   (t) => ({
     nameIdx: index("characters_name_idx").on(t.name),
     userIdIdx: index("characters_user_id_idx").on(t.userId),
-    createdAtIdx: index("characters_created_at_idx").on(t.createdAt),
+    createdAtIdx: index("characters_created_at_idx").on(t.createdAt)
   })
 );
 
@@ -45,7 +45,7 @@ export const lore = sqliteTable(
   "lore",
   {
     id: integer("id", { mode: "number" }).primaryKey({
-      autoIncrement: true,
+      autoIncrement: true
     }),
     title: text("title").notNull(),
     content: text("content").notNull(),
@@ -54,12 +54,12 @@ export const lore = sqliteTable(
       .references(() => user.id),
     createdAt: text("created_at")
       .default(sql`CURRENT_TIMESTAMP`)
-      .notNull(),
+      .notNull()
   },
   (t) => ({
     titleIdx: index("lore_title_idx").on(t.title),
     userIdIdx: index("lore_user_id_idx").on(t.userId),
-    createdAtIdx: index("lore_created_at_idx").on(t.createdAt),
+    createdAtIdx: index("lore_created_at_idx").on(t.createdAt)
   })
 );
 
@@ -77,7 +77,7 @@ export const session = sqliteTable("session", {
     .default(sql`CURRENT_TIMESTAMP`),
   updatedAt: integer("updatedAt", { mode: "timestamp" })
     .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
+    .default(sql`CURRENT_TIMESTAMP`)
 });
 
 export const account = sqliteTable("account", {
@@ -97,14 +97,14 @@ export const account = sqliteTable("account", {
     .default(sql`CURRENT_TIMESTAMP`),
   updatedAt: integer("updatedAt", { mode: "timestamp" })
     .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
+    .default(sql`CURRENT_TIMESTAMP`)
 });
 
 export const verification = sqliteTable("verification", {
   id: text("id").primaryKey(),
   identifier: text("identifier").notNull(),
   value: text("value").notNull(),
-  expiresAt: integer("expiresAt", { mode: "timestamp" }).notNull(),
+  expiresAt: integer("expiresAt", { mode: "timestamp" }).notNull()
 });
 
 export const aiProviderKey = sqliteTable(
@@ -119,12 +119,12 @@ export const aiProviderKey = sqliteTable(
     keyHash: text("keyHash").notNull(),
     last4: text("last4").notNull(),
     createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
-    updatedAt: text("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+    updatedAt: text("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull()
   },
   (t) => ({
     userProviderUIdx: uniqueIndex(
       "ai_provider_key_user_provider_uidx"
-    ).on(t.userId, t.provider),
+    ).on(t.userId, t.provider)
   })
 );
 
@@ -139,11 +139,11 @@ export const chats = sqliteTable(
     model: text("model").notNull(),
     characterId: integer("characterId", { mode: "number" }),
     createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
-    updatedAt: text("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+    updatedAt: text("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull()
   },
   (t) => ({
     userIdx: index("chats_user_idx").on(t.userId),
-    updatedAtIdx: index("chats_updated_at_idx").on(t.updatedAt),
+    updatedAtIdx: index("chats_updated_at_idx").on(t.updatedAt)
   })
 );
 
@@ -157,11 +157,44 @@ export const messages = sqliteTable(
       .references(() => user.id),
     role: text("role").notNull(),
     content: text("content").notNull(),
-    createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+    createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull()
   },
   (t) => ({
     chatIdx: index("messages_chat_idx").on(t.chatId),
-    createdAtIdx: index("messages_created_at_idx").on(t.createdAt),
+    createdAtIdx: index("messages_created_at_idx").on(t.createdAt)
+  })
+);
+
+export const ragChunks = sqliteTable(
+  "rag_chunks",
+  {
+    id: integer("id", { mode: "number" }).primaryKey({ autoIncrement: true }),
+    userId: text("userId")
+      .notNull()
+      .references(() => user.id),
+    sourceType: text("sourceType").notNull(),
+    sourceId: integer("sourceId", { mode: "number" }),
+    chatId: integer("chatId", { mode: "number" }),
+    characterId: integer("characterId", { mode: "number" }),
+    title: text("title"),
+    content: text("content").notNull(),
+    embedding: text("embedding").notNull(),
+    tokenCount: integer("tokenCount", { mode: "number" }),
+    hash: text("hash").notNull(),
+    createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+    updatedAt: text("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull()
+  },
+  (t) => ({
+    userIdx: index("rag_user_idx").on(t.userId),
+    typeIdx: index("rag_type_idx").on(t.sourceType),
+    charIdx: index("rag_character_idx").on(t.characterId),
+    chatIdx: index("rag_chat_idx").on(t.chatId),
+    userSourceHashUIdx: uniqueIndex("rag_user_source_hash_uidx").on(
+      t.userId,
+      t.sourceType,
+      t.sourceId,
+      t.hash
+    )
   })
 );
 
@@ -169,58 +202,58 @@ export const userRelations = relations(user, ({ many }) => ({
   characters: many(characters),
   lore: many(lore),
   sessions: many(session),
-  accounts: many(account),
+  accounts: many(account)
 }));
 
 export const charactersRelations = relations(characters, ({ one }) => ({
   user: one(user, {
     fields: [characters.userId],
-    references: [user.id],
-  }),
+    references: [user.id]
+  })
 }));
 
 export const loreRelations = relations(lore, ({ one }) => ({
   user: one(user, {
     fields: [lore.userId],
-    references: [user.id],
-  }),
+    references: [user.id]
+  })
 }));
 
 export const sessionRelations = relations(session, ({ one }) => ({
   user: one(user, {
     fields: [session.userId],
-    references: [user.id],
-  }),
+    references: [user.id]
+  })
 }));
 
 export const accountRelations = relations(account, ({ one }) => ({
   user: one(user, {
     fields: [account.userId],
-    references: [user.id],
-  }),
+    references: [user.id]
+  })
 }));
 
 export const chatRelations = relations(chats, ({ one, many }) => ({
   user: one(user, {
     fields: [chats.userId],
-    references: [user.id],
+    references: [user.id]
   }),
   character: one(characters, {
     fields: [chats.characterId],
-    references: [characters.id],
+    references: [characters.id]
   }),
-  messages: many(messages),
+  messages: many(messages)
 }));
 
 export const messageRelations = relations(messages, ({ one }) => ({
   chat: one(chats, {
     fields: [messages.chatId],
-    references: [chats.id],
+    references: [chats.id]
   }),
   user: one(user, {
     fields: [messages.userId],
-    references: [user.id],
-  }),
+    references: [user.id]
+  })
 }));
 
 export type Character = typeof characters.$inferSelect;
@@ -235,3 +268,4 @@ export type Session = typeof session.$inferSelect;
 export type AIProviderKey = typeof aiProviderKey.$inferSelect;
 export type Chat = typeof chats.$inferSelect;
 export type Message = typeof messages.$inferSelect;
+export type RagChunk = typeof ragChunks.$inferSelect;
