@@ -55,6 +55,7 @@ try {
               "GET /api/chats/:id/messages",
               "PATCH /api/chats/:id",
               "DELETE /api/chats/:id",
+              "POST /api/rag/reindex",
             ],
           });
         }

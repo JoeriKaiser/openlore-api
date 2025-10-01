@@ -3,6 +3,7 @@ import { lore } from "../../lib/schema";
 import { eq, and } from "drizzle-orm";
 import { badRequest, json, notFound, readJson } from "../utils/http";
 import { getCurrentUser } from "../utils/auth";
+import { indexLoreEntry, deleteChunksForSource } from "../../lib/rag";
 
 type CreateBody = { title: string; content: string };
 type UpdateBody = { title?: string; content?: string };
@@ -45,8 +46,9 @@ export async function createLore(req: Request) {
   let body: CreateBody;
   try {
     body = await readJson<CreateBody>(req);
-  } catch (e: any) {
-    return badRequest(e?.message ?? "Invalid JSON");
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Invalid JSON";
+    return badRequest(msg);
   }
 
   if (!body.title || !body.content) {
@@ -58,10 +60,16 @@ export async function createLore(req: Request) {
     .values({
       title: body.title,
       content: body.content,
-      userId: user.id,
+      userId: user.id
     })
     .returning();
 
+  void indexLoreEntry({
+    userId: user.id,
+    id: inserted.id,
+    title: inserted.title,
+    content: inserted.content
+  });
   return json(inserted, 201);
 }
 
@@ -77,8 +85,9 @@ export async function updateLore(req: Request, idParam: string) {
   let body: UpdateBody;
   try {
     body = await readJson<UpdateBody>(req);
-  } catch (e: any) {
-    return badRequest(e?.message ?? "Invalid JSON");
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Invalid JSON";
+    return badRequest(msg);
   }
 
   const payload: Partial<typeof lore.$inferInsert> = {};
@@ -94,6 +103,14 @@ export async function updateLore(req: Request, idParam: string) {
     .returning();
 
   if (!updated) return notFound();
+  void deleteChunksForSource(user.id, "lore", updated.id).then(() =>
+    indexLoreEntry({
+      userId: user.id,
+      id: updated.id,
+      title: updated.title,
+      content: updated.content
+    })
+  );
   return json(updated);
 }
 
@@ -112,5 +129,6 @@ export async function deleteLore(req: Request, idParam: string) {
     .returning({ id: lore.id });
 
   if (!deleted) return notFound();
+  void deleteChunksForSource(user.id, "lore", id);
   return json({ ok: true });
 }

@@ -4,7 +4,7 @@ import {
   chats,
   messages,
   characters as charactersTable,
-  lore as loreTable,
+  lore as loreTable
 } from "../../lib/schema";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { badRequest, createSSE, json, readJson } from "../utils/http";
@@ -12,6 +12,11 @@ import { getCurrentUser } from "../utils/auth";
 import { encryptString, decryptString } from "../../lib/crypto";
 import { config } from "../../lib/env";
 import { hashPassword } from "better-auth/crypto";
+import {
+  retrieveRAGContext,
+  composeRagSystemPrompt,
+  indexMessageChunk
+} from "../../lib/rag";
 
 type SetKeyBody = { key: string };
 type ChatStreamBody = {
@@ -49,7 +54,10 @@ export async function setOpenRouterKey(req: Request) {
   const user = await getCurrentUser(req);
   if (!user) return json({ error: "Unauthorized" }, 401);
 
-  const body = await readJson<SetKeyBody>(req);
+  const body = await readJson<SetKeyBody>(req).catch((e: unknown) => {
+    const msg = e instanceof Error ? e.message : "Invalid JSON";
+    throw new Error(msg);
+  });
   const key = (body.key ?? "").trim();
   if (!key) return badRequest("Key is required");
 
@@ -65,7 +73,7 @@ export async function setOpenRouterKey(req: Request) {
         provider: "openrouter",
         encryptedKey,
         keyHash,
-        last4,
+        last4
       })
       .onConflictDoUpdate({
         target: [aiProviderKey.userId, aiProviderKey.provider],
@@ -73,14 +81,14 @@ export async function setOpenRouterKey(req: Request) {
           encryptedKey,
           keyHash,
           last4,
-          updatedAt: sql`CURRENT_TIMESTAMP`,
-        },
+          updatedAt: sql`CURRENT_TIMESTAMP`
+        }
       })
       .returning({
         id: aiProviderKey.id,
         last4: aiProviderKey.last4,
         createdAt: aiProviderKey.createdAt,
-        updatedAt: aiProviderKey.updatedAt,
+        updatedAt: aiProviderKey.updatedAt
       });
 
     return json({
@@ -88,13 +96,16 @@ export async function setOpenRouterKey(req: Request) {
       last4: saved!.last4,
       id: saved!.id,
       createdAt: saved!.createdAt,
-      updatedAt: saved!.updatedAt,
+      updatedAt: saved!.updatedAt
     });
-  } catch (e: any) {
-    const msg = String(e?.message || e);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Database error";
     if (msg.includes("ON CONFLICT")) {
       return json(
-        { error: "Upsert failed. Ensure unique index on (userId, provider) exists." },
+        {
+          error:
+            "Upsert failed. Ensure unique index on (userId, provider) exists."
+        },
         500
       );
     }
@@ -134,14 +145,14 @@ export async function listModels(req: Request) {
   const { key } = await getUserOpenRouterKey(user.id);
   const headers: Record<string, string> = {
     "content-type": "application/json",
-    "http-referer": config.openRouterReferer,
+    "http-referer": config.openRouterReferer
   };
   if (key) headers.authorization = `Bearer ${key}`;
 
   try {
     const res = await fetch("https://openrouter.ai/api/v1/models", {
       method: "GET",
-      headers,
+      headers
     });
 
     if (!res.ok) {
@@ -151,12 +162,17 @@ export async function listModels(req: Request) {
 
     const data = await res.json();
     return json(data);
-  } catch (e: any) {
-    return json({ error: "Failed to fetch models", details: e?.message }, 500);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Failed to fetch models";
+    return json({ error: "Failed to fetch models", details: msg }, 500);
   }
 }
 
-async function loadContextParts(userId: string, characterId?: number | null, loreIds?: number[] | null) {
+async function loadContextParts(
+  userId: string,
+  characterId?: number | null,
+  loreIds?: number[] | null
+) {
   const parts: string[] = [];
 
   if (characterId && Number.isFinite(characterId)) {
@@ -178,9 +194,7 @@ async function loadContextParts(userId: string, characterId?: number | null, lor
       .from(loreTable)
       .where(and(inArray(loreTable.id, loreIds), eq(loreTable.userId, userId)));
     if (rows.length > 0) {
-      const loreText = rows
-        .map((r, i) => `(${i + 1}) ${r.title}: ${r.content}`)
-        .join("\n");
+      const loreText = rows.map((r, i) => `(${i + 1}) ${r.title}: ${r.content}`).join("\n");
       parts.push(`Relevant lore:\n${loreText}`);
     }
   }
@@ -195,8 +209,9 @@ export async function chatStream(req: Request) {
   let body: ChatStreamBody;
   try {
     body = await readJson<ChatStreamBody>(req);
-  } catch (e: any) {
-    return badRequest(e?.message ?? "Invalid JSON");
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Invalid JSON";
+    return badRequest(msg);
   }
 
   const model = (body.model ?? "").trim();
@@ -211,7 +226,12 @@ export async function chatStream(req: Request) {
 
   if (chatId) {
     const rows = await db
-      .select({ id: chats.id, title: chats.title, model: chats.model })
+      .select({
+        id: chats.id,
+        title: chats.title,
+        model: chats.model,
+        characterId: chats.characterId
+      })
       .from(chats)
       .where(and(eq(chats.id, chatId), eq(chats.userId, user.id)))
       .limit(1);
@@ -221,6 +241,9 @@ export async function chatStream(req: Request) {
         .update(chats)
         .set({ model, updatedAt: sql`CURRENT_TIMESTAMP` })
         .where(and(eq(chats.id, chatId), eq(chats.userId, user.id)));
+    }
+    if (!body.characterId && rows[0].characterId) {
+      body.characterId = rows[0].characterId;
     }
   } else {
     const title =
@@ -233,7 +256,7 @@ export async function chatStream(req: Request) {
         userId: user.id,
         title,
         model,
-        characterId: body.characterId ?? null,
+        characterId: body.characterId ?? null
       })
       .returning({ id: chats.id, title: chats.title });
     chatId = inserted.id;
@@ -245,14 +268,21 @@ export async function chatStream(req: Request) {
       chatId: chatId!,
       userId: user.id,
       role: "user",
-      content: userMessage,
+      content: userMessage
     })
     .returning();
+  void indexMessageChunk({
+    userId: user.id,
+    chatId: chatId!,
+    characterId: body.characterId ?? null,
+    role: "user",
+    content: userMessage
+  });
 
   const historyRows = await db
     .select({
       role: messages.role,
-      content: messages.content,
+      content: messages.content
     })
     .from(messages)
     .where(eq(messages.chatId, chatId!))
@@ -262,15 +292,37 @@ export async function chatStream(req: Request) {
   if (body.system && body.system.trim().length > 0) {
     systemParts.push(body.system.trim());
   }
-  const ctxParts = await loadContextParts(user.id, body.characterId ?? null, body.loreIds ?? null);
-  systemParts.push(...ctxParts);
+  const directParts = await loadContextParts(
+    user.id,
+    body.characterId ?? null,
+    body.loreIds ?? null
+  );
+  if (directParts.length > 0) {
+    systemParts.push(...directParts);
+  }
+  const rag = await retrieveRAGContext({
+    userId: user.id,
+    query: userMessage,
+    chatId: chatId!,
+    characterId: body.characterId ?? null,
+    loreIds: body.loreIds ?? null,
+    topK: config.ragTopK
+  });
+  const ragPrompt = composeRagSystemPrompt(rag);
+  if (ragPrompt.trim().length > 0) systemParts.push(ragPrompt);
 
-  const chatMessages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [];
+  const chatMessages: Array<{
+    role: "system" | "user" | "assistant";
+    content: string;
+  }> = [];
   if (systemParts.length > 0) {
     chatMessages.push({ role: "system", content: systemParts.join("\n\n") });
   }
   for (const m of historyRows) {
-    const r = m.role === "assistant" || m.role === "user" ? (m.role as "assistant" | "user") : "user";
+    const r =
+      m.role === "assistant" || m.role === "user"
+        ? (m.role as "assistant" | "user")
+        : "user";
     chatMessages.push({ role: r, content: m.content });
   }
 
@@ -278,22 +330,31 @@ export async function chatStream(req: Request) {
     "content-type": "application/json",
     authorization: `Bearer ${key}`,
     "http-referer": config.openRouterReferer,
-    "x-title": "OpenLore Chat",
+    "x-title": "OpenLore Chat"
   };
 
-  const openrouterRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      model,
-      stream: true,
-      messages: chatMessages,
-    }),
-  });
+  const openrouterRes = await fetch(
+    "https://openrouter.ai/api/v1/chat/completions",
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model,
+        stream: true,
+        messages: chatMessages
+      })
+    }
+  );
 
   if (!openrouterRes.ok || !openrouterRes.body) {
     const text = await openrouterRes.text().catch(() => "");
-    return json({ error: "OpenRouter error", details: text || openrouterRes.statusText }, openrouterRes.status);
+    return json(
+      {
+        error: "OpenRouter error",
+        details: text || openrouterRes.statusText
+      },
+      openrouterRes.status
+    );
   }
 
   const { response, write, close } = createSSE();
@@ -326,7 +387,9 @@ export async function chatStream(req: Request) {
               break;
             }
             try {
-              const obj = JSON.parse(dataStr);
+              const obj = JSON.parse(dataStr) as {
+                choices?: Array<{ delta?: { content?: string } }>;
+              };
               const delta = obj?.choices?.[0]?.delta?.content ?? "";
               if (delta) {
                 assistantText += delta;
@@ -345,9 +408,16 @@ export async function chatStream(req: Request) {
           chatId: chatId!,
           userId: user.id,
           role: "assistant",
-          content: assistantText,
+          content: assistantText
         })
         .returning({ id: messages.id });
+      void indexMessageChunk({
+        userId: user.id,
+        chatId: chatId!,
+        characterId: body.characterId ?? null,
+        role: "assistant",
+        content: assistantText
+      });
 
       await db
         .update(chats)
@@ -357,11 +427,12 @@ export async function chatStream(req: Request) {
       await write("done", {
         chatId,
         messageId: assistantMsg?.id ?? null,
-        preview: assistantText.slice(0, 120),
+        preview: assistantText.slice(0, 120)
       });
-    } catch (e) {
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "stream error";
       try {
-        await write("error", { message: (e as any)?.message ?? "stream error" });
+        await write("error", { message: msg });
       } catch {}
     } finally {
       try {
@@ -384,7 +455,7 @@ export async function listChats(req: Request) {
       model: chats.model,
       characterId: chats.characterId,
       createdAt: chats.createdAt,
-      updatedAt: chats.updatedAt,
+      updatedAt: chats.updatedAt
     })
     .from(chats)
     .where(eq(chats.userId, user.id))
@@ -412,7 +483,7 @@ export async function getChatMessages(req: Request, idParam: string) {
       id: messages.id,
       role: messages.role,
       content: messages.content,
-      createdAt: messages.createdAt,
+      createdAt: messages.createdAt
     })
     .from(messages)
     .where(eq(messages.chatId, id))
@@ -431,8 +502,9 @@ export async function updateChat(req: Request, idParam: string) {
   let body: UpdateChatBody;
   try {
     body = await readJson<UpdateChatBody>(req);
-  } catch (e: any) {
-    return badRequest(e?.message ?? "Invalid JSON");
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Invalid JSON";
+    return badRequest(msg);
   }
 
   const patch: Partial<typeof chats.$inferInsert> = {};

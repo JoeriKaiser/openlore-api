@@ -3,6 +3,7 @@ import { characters } from "../../lib/schema";
 import { eq, and } from "drizzle-orm";
 import { badRequest, json, notFound, readJson } from "../utils/http";
 import { getCurrentUser } from "../utils/auth";
+import { indexCharacterBio, deleteChunksForSource } from "../../lib/rag";
 
 type CreateBody = { name: string; bio?: string | null };
 type UpdateBody = { name?: string; bio?: string | null };
@@ -54,8 +55,9 @@ export async function createCharacter(req: Request) {
   let body: CreateBody;
   try {
     body = await readJson<CreateBody>(req);
-  } catch (e: any) {
-    return badRequest(e?.message ?? "Invalid JSON");
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Invalid JSON";
+    return badRequest(msg);
   }
 
   if (!body.name || body.name.trim().length === 0) {
@@ -71,9 +73,14 @@ export async function createCharacter(req: Request) {
         userId: user.id
       })
       .returning();
+    void indexCharacterBio({
+      userId: user.id,
+      id: inserted.id,
+      name: inserted.name,
+      bio: inserted.bio ?? null
+    });
     return json(inserted, 201);
-  } catch (dbError) {
-    console.error("❌ Database error:", dbError);
+  } catch (dbError: unknown) {
     return badRequest("Database error occurred");
   }
 }
@@ -90,8 +97,9 @@ export async function updateCharacter(req: Request, idParam: string) {
   let body: UpdateBody;
   try {
     body = await readJson<UpdateBody>(req);
-  } catch (e: any) {
-    return badRequest(e?.message ?? "Invalid JSON");
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Invalid JSON";
+    return badRequest(msg);
   }
 
   const payload: Partial<typeof characters.$inferInsert> = {};
@@ -109,6 +117,14 @@ export async function updateCharacter(req: Request, idParam: string) {
     .returning();
 
   if (!updated) return notFound();
+  void deleteChunksForSource(user.id, "character", updated.id).then(() =>
+    indexCharacterBio({
+      userId: user.id,
+      id: updated.id,
+      name: updated.name,
+      bio: updated.bio ?? null
+    })
+  );
   return json(updated);
 }
 
@@ -127,5 +143,6 @@ export async function deleteCharacter(req: Request, idParam: string) {
     .returning({ id: characters.id });
 
   if (!deleted) return notFound();
+  void deleteChunksForSource(user.id, "character", id);
   return json({ ok: true });
 }

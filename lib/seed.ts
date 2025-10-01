@@ -2,6 +2,7 @@ import { db } from "./db";
 import * as schema from "./schema";
 import { eq, and } from "drizzle-orm";
 import { hashPassword } from "better-auth/crypto";
+import { reindexAllForUser } from "./rag";
 
 async function seed() {
   console.log("🌱 Starting database seeding...");
@@ -166,6 +167,10 @@ async function seed() {
       },
     ]);
     console.log("✅ Lore entries inserted.");
+
+    console.log("🔁 Reindexing RAG for seed user...");
+    await reindexAllForUser(seedUserId);
+    console.log("✅ RAG reindex complete for seed user.");
 
     console.log("\n🎉 Database seeding complete!");
     console.log("\n📋 Seed User Details:");

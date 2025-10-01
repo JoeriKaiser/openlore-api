@@ -31,6 +31,14 @@ const encryptionSecret = env.ENCRYPTION_SECRET || authSecret;
 
 const openRouterReferer = env.OPENROUTER_REFERER ?? clientUrl;
 
+const embeddingsModelId =
+  env.EMBEDDINGS_MODEL_ID ?? "Xenova/bge-small-en-v1.5";
+const embeddingsLocalPath = env.EMBEDDINGS_LOCAL_PATH ?? "./models";
+
+const ragTopK = Number(env.RAG_TOP_K ?? 6);
+const ragChunkTokens = Number(env.RAG_CHUNK_TOKENS ?? 240);
+const ragChunkOverlapTokens = Number(env.RAG_CHUNK_OVERLAP_TOKENS ?? 40);
+
 export const config = {
   nodeEnv,
   isProd,
@@ -43,4 +51,9 @@ export const config = {
   isCrossSite: toOrigin(clientUrl) !== toOrigin(baseUrl),
   encryptionSecret,
   openRouterReferer,
+  embeddingsModelId,
+  embeddingsLocalPath,
+  ragTopK,
+  ragChunkTokens,
+  ragChunkOverlapTokens
 };
