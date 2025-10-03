@@ -10,14 +10,6 @@ type FeatureExtraction = (
 
 let extractor: FeatureExtraction | null = null;
 
-function wasmDistPath(): string {
-  const url = new URL(
-    "../node_modules/onnxruntime-web/dist/",
-    import.meta.url
-  );
-  return url.pathname;
-}
-
 async function getExtractor(): Promise<FeatureExtraction> {
   if (extractor) return extractor;
   const tfe = tfenv as unknown as {
@@ -40,10 +32,7 @@ async function getExtractor(): Promise<FeatureExtraction> {
   tfe.localModelPath = config.embeddingsLocalPath;
   tfe.useBrowserCache = false;
   tfe.allowLocalModelsOnly = true;
-  tfe.backends.onnx.executionProviders = ["wasm"];
-  tfe.backends.onnx.wasm.wasmPaths = wasmDistPath();
-  tfe.backends.onnx.wasm.proxy = false;
-  tfe.backends.onnx.wasm.numThreads = 1;
+  tfe.backends.onnx.executionProviders = ["cpu"];
   const p = (await pipeline(
     "feature-extraction",
     config.embeddingsModelId

@@ -9,6 +9,7 @@ import {
   getChatMessages,
   updateChat,
   deleteChat,
+  extractLore,
 } from "../controllers/ai";
 
 export function registerAiRoutes(router: Router) {
@@ -19,6 +20,8 @@ export function registerAiRoutes(router: Router) {
   router.on("GET", "/api/ai/models", ({ req }) => listModels(req));
 
   router.on("POST", "/api/chat/stream", ({ req }) => chatStream(req));
+
+  router.on("POST", "/api/ai/extract-lore", ({ req }) => extractLore(req));
 
   router.on("GET", "/api/chats", ({ req }) => listChats(req));
   router.on("GET", "/api/chats/:id/messages", ({ req, params }) =>

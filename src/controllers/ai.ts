@@ -15,7 +15,8 @@ import { hashPassword } from "better-auth/crypto";
 import {
   retrieveRAGContext,
   composeRagSystemPrompt,
-  indexMessageChunk
+  indexMessageChunk,
+  indexLoreEntry
 } from "../../lib/rag";
 
 type SetKeyBody = { key: string };
@@ -443,7 +444,6 @@ export async function chatStream(req: Request) {
 
   return response;
 }
-
 export async function listChats(req: Request) {
   const user = await getCurrentUser(req);
   if (!user) return json({ error: "Unauthorized" }, 401);
@@ -541,4 +541,194 @@ export async function deleteChat(req: Request, idParam: string) {
   await db.delete(chats).where(eq(chats.id, id));
 
   return json({ ok: true });
+}
+
+function parseFirstJsonObject(input: string): any | null {
+  const start = input.indexOf("{");
+  const end = input.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) return null;
+  const candidate = input.slice(start, end + 1);
+  try {
+    return JSON.parse(candidate);
+  } catch {
+    return null;
+  }
+}
+
+type ExtractLoreBody = {
+  chatId: number;
+  messageId?: number | null;
+  model?: string | null;
+  maxMessages?: number | null;
+  save?: boolean;
+  // If provided, bypass LLM suggestion and save directly
+  title?: string | null;
+  content?: string | null;
+};
+
+export async function extractLore(req: Request) {
+  const user = await getCurrentUser(req);
+  if (!user) return json({ error: "Unauthorized" }, 401);
+
+  let body: ExtractLoreBody;
+  try {
+    body = await readJson<ExtractLoreBody>(req);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Invalid JSON";
+    return badRequest(msg);
+  }
+
+  const chatId = Number(body.chatId);
+  if (!Number.isFinite(chatId)) return badRequest("chatId is required");
+
+  const chatRow = await db
+    .select({
+      id: chats.id,
+      model: chats.model
+    })
+    .from(chats)
+    .where(and(eq(chats.id, chatId), eq(chats.userId, user.id)))
+    .limit(1);
+  if (!chatRow[0]) return json({ error: "Chat not found" }, 404);
+
+  const model = (body.model ?? chatRow[0].model ?? "").trim();
+  if (!model) return badRequest("model is required");
+
+  const { key } = await getUserOpenRouterKey(user.id);
+  if (!key) return json({ error: "OpenRouter key not set" }, 400);
+
+  // Fetch recent messages (or a window around messageId)
+  const rows = await db
+    .select({
+      id: messages.id,
+      role: messages.role,
+      content: messages.content
+    })
+    .from(messages)
+    .where(eq(messages.chatId, chatId))
+    .orderBy(messages.id);
+
+  const maxMessages = Math.max(4, Math.min(30, body.maxMessages ?? 12));
+
+  let convo: { role: string; content: string }[] = [];
+  if (body.messageId) {
+    const idx = rows.findIndex((r) => r.id === body.messageId);
+    const start = Math.max(0, idx - Math.floor(maxMessages / 2));
+    const end = Math.min(rows.length, start + maxMessages);
+    convo = rows.slice(start, end);
+  } else {
+    convo = rows.slice(Math.max(0, rows.length - maxMessages));
+  }
+
+  // If caller already provides title/content, skip LLM and just save (if requested)
+  if (body.title && body.content && body.save) {
+    const [saved] = await db
+      .insert(loreTable)
+      .values({
+        title: body.title,
+        content: body.content,
+        userId: user.id
+      })
+      .returning();
+
+    void indexLoreEntry({
+      userId: user.id,
+      id: saved.id,
+      title: saved.title,
+      content: saved.content
+    });
+
+    return json({ saved });
+  }
+
+  // Build the lore suggestion via OpenRouter
+  const systemPrompt =
+    [
+      "You are an assistant that extracts canonical world lore from a chat.",
+      "Given the conversation, identify one important fact, rule, event,",
+      "or world detail worth storing as lore.",
+      "",
+      "Output ONLY a strict JSON object matching:",
+      '{ "title": string, "content": string }',
+      "- title: concise (< 80 chars), no speaker names.",
+      "- content: 1-4 sentences, factual, timeless if possible.",
+      "- Do NOT include analysis, preambles, or code fences."
+    ].join("\n");
+
+  const convoText = convo
+    .map((m) => `${m.role === "assistant" ? "Assistant" : "User"}: ${m.content}`)
+    .join("\n");
+
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    authorization: `Bearer ${key}`,
+    "http-referer": config.openRouterReferer,
+    "x-title": "OpenLore Lore Extractor"
+  };
+
+  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model,
+      stream: false,
+      messages: [
+        { role: "system", content: systemPrompt },
+        {
+          role: "user",
+          content: ["Conversation:", convoText].join("\n\n")
+        }
+      ]
+    })
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    return json({ error: "Failed to extract lore", details: text }, res.status);
+  }
+
+  const data = await res.json();
+  const content =
+    data?.choices?.[0]?.message?.content ??
+    data?.choices?.[0]?.content ??
+    "";
+
+  let obj = parseFirstJsonObject(content);
+  if (!obj || typeof obj !== "object") {
+    // Fallback: naive extraction from last assistant message
+    const lastAssistant = [...convo]
+      .reverse()
+      .find((m) => m.role === "assistant")?.content;
+    obj = {
+      title: (lastAssistant ?? "Lore Item").split(/\s+/).slice(0, 8).join(" "),
+      content: lastAssistant ?? "Important detail from the conversation."
+    };
+  }
+
+  if (body.save) {
+    const [saved] = await db
+      .insert(loreTable)
+      .values({
+        title: String(obj.title ?? "Lore Item"),
+        content: String(obj.content ?? ""),
+        userId: user.id
+      })
+      .returning();
+
+    void indexLoreEntry({
+      userId: user.id,
+      id: saved.id,
+      title: saved.title,
+      content: saved.content
+    });
+
+    return json({ saved });
+  }
+
+  return json({
+    suggestion: {
+      title: String(obj.title ?? "Lore Item"),
+      content: String(obj.content ?? "")
+    }
+  });
 }
