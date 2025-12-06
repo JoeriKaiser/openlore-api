@@ -1,52 +1,29 @@
 import { pipeline, env as tfenv } from "@huggingface/transformers";
 import { config } from "./env";
 
-type FeatureExtractionOutput = { data: Float32Array | number[] };
+type Extractor = (text: string, opts?: { pooling?: string; normalize?: boolean }) => 
+  Promise<{ data: Float32Array | number[] }>;
 
-type FeatureExtraction = (
-  text: string,
-  options?: { pooling?: "mean" | "none"; normalize?: boolean }
-) => Promise<FeatureExtractionOutput>;
+let extractor: Extractor | null = null;
 
-let extractor: FeatureExtraction | null = null;
-
-async function getExtractor(): Promise<FeatureExtraction> {
+async function getExtractor(): Promise<Extractor> {
   if (extractor) return extractor;
-  const tfe = tfenv as unknown as {
-    localModelPath: string;
-    allowLocalModelsOnly: boolean;
-    useBrowserCache: boolean;
-    cacheDir?: string;
-    backends: {
-      onnx: {
-        wasm: {
-          wasmPaths?: string;
-          proxy?: boolean;
-          numThreads?: number;
-        };
-        executionProviders?: string[];
-      };
-    };
-  };
-  tfe.cacheDir = config.embeddingsLocalPath;
-  tfe.localModelPath = config.embeddingsLocalPath;
-  tfe.useBrowserCache = false;
-  tfe.allowLocalModelsOnly = true;
+  
+  const tfe = tfenv as any;
+  Object.assign(tfe, {
+    cacheDir: config.embeddingsLocalPath,
+    localModelPath: config.embeddingsLocalPath,
+    useBrowserCache: false,
+    allowLocalModelsOnly: true,
+  });
   tfe.backends.onnx.executionProviders = ["cpu"];
-  const p = (await pipeline(
-    "feature-extraction",
-    config.embeddingsModelId
-  )) as unknown as FeatureExtraction;
-  extractor = p;
+  
+  extractor = await pipeline("feature-extraction", config.embeddingsModelId) as unknown as Extractor;
   return extractor;
 }
 
-export async function embedText(params: { text: string }): Promise<number[]> {
+export async function embedText({ text }: { text: string }): Promise<number[]> {
   const fe = await getExtractor();
-  const out = await fe(params.text, { pooling: "mean", normalize: true });
-  const arr =
-    out.data instanceof Float32Array
-      ? Array.from(out.data)
-      : (out.data as number[]);
-  return arr.map((x) => Number(x));
+  const { data } = await fe(text, { pooling: "mean", normalize: true });
+  return Array.from(data).map(Number);
 }

@@ -1,67 +1,27 @@
-export type Handler = (ctx: {
-  req: Request;
-  params: Record<string, string>;
-}) => Response | Promise<Response>;
+export type Handler = (ctx: { req: Request; params: Record<string, string> }) => Response | Promise<Response>;
 
-type Route = {
-  method: string;
-  pattern: RegExp;
-  keys: string[];
-  handler: Handler;
-};
+type Route = { method: string; pattern: RegExp; handler: Handler };
 
-function pathToRegex(path: string): { regex: RegExp; keys: string[] } {
-  const keys: string[] = [];
-  let rx = path
-    .replace(/\/+/g, "/")
-    .replace(/\/:([A-Za-z0-9_]+)/g, (_, key) => {
-      keys.push(key);
-      return "/(?<" + key + ">[^/]+)";
-    });
-
-  if (rx.endsWith("/*")) {
-    rx = rx.slice(0, -2) + "(?:/.*)?";
-  } else {
-    rx = rx.replace(/\*/g, ".*");
-  }
-
-  return { regex: new RegExp("^" + rx + "$"), keys };
+function pathToRegex(path: string): RegExp {
+  let rx = path.replace(/\/+/g, "/").replace(/\/:([A-Za-z0-9_]+)/g, "/(?<$1>[^/]+)");
+  rx = rx.endsWith("/*") ? rx.slice(0, -2) + "(?:/.*)?" : rx.replace(/\*/g, ".*");
+  return new RegExp(`^${rx}$`);
 }
 
 export class Router {
   private routes: Route[] = [];
 
-  on(method: string, path: string, handler: Handler): this {
-    const { regex, keys } = pathToRegex(path);
-    const route = {
-      method: method.toUpperCase(),
-      pattern: regex,
-      keys,
-      handler,
-    };
-    this.routes.push(route);
+  on(method: string, path: string, handler: Handler) {
+    this.routes.push({ method: method.toUpperCase(), pattern: pathToRegex(path), handler });
     return this;
   }
 
   async handle(req: Request): Promise<Response | undefined> {
-    const url = new URL(req.url);
-
+    const { pathname } = new URL(req.url);
     for (const r of this.routes) {
-      if (r.method !== req.method.toUpperCase()) continue;
-      const m = url.pathname.match(r.pattern);
-      if (!m) continue;
-
-      const params = m.groups || {};
-      try {
-        return await r.handler({
-          req,
-          params: params as Record<string, string>,
-        });
-      } catch (error) {
-        throw error;
-      }
+      if (r.method !== req.method) continue;
+      const m = pathname.match(r.pattern);
+      if (m) return r.handler({ req, params: m.groups ?? {} });
     }
-
-    return undefined;
   }
 }

@@ -1,4 +1,3 @@
-import type { HeadersInit } from "bun";
 import { config } from "../../lib/env";
 
 export const CORS_HEADERS: Record<string, string> = {
@@ -9,61 +8,43 @@ export const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Max-Age": "86400",
 };
 
-export function json(data: unknown, init: number | ResponseInit = 200): Response {
-  const base: ResponseInit = typeof init === "number" ? { status: init } : init ?? {};
-  const headers = new Headers(base.headers as HeadersInit);
-  headers.set("content-type", "application/json; charset=utf-8");
+const withCors = (headers: Headers) => {
   Object.entries(CORS_HEADERS).forEach(([k, v]) => headers.set(k, v));
+  return headers;
+};
+
+export function json(data: unknown, init: number | ResponseInit = 200): Response {
+  const base = typeof init === "number" ? { status: init } : init;
+  const headers = withCors(new Headers(base.headers));
+  headers.set("content-type", "application/json; charset=utf-8");
   return new Response(JSON.stringify(data), { ...base, headers });
 }
 
-export function noContent(init?: ResponseInit): Response {
-  const headers = new Headers(init?.headers as HeadersInit);
-  Object.entries(CORS_HEADERS).forEach(([k, v]) => headers.set(k, v));
-  return new Response(null, { status: 204, ...init, headers });
-}
-
-export function badRequest(message: string, details?: unknown): Response {
-  return json({ error: message, details }, 400);
-}
-
-export function notFound(): Response {
-  return json({ error: "Not Found" }, 404);
-}
+export const noContent = () => new Response(null, { status: 204, headers: withCors(new Headers()) });
+export const badRequest = (message: string, details?: unknown) => json({ error: message, details }, 400);
+export const notFound = () => json({ error: "Not Found" }, 404);
+export const unauthorized = () => json({ error: "Unauthorized" }, 401);
 
 export async function readJson<T>(req: Request): Promise<T> {
-  try {
-    return (await req.json()) as T;
-  } catch {
-    throw new Error("Invalid JSON body");
-  }
+  try { return await req.json() as T; }
+  catch { throw new Error("Invalid JSON body"); }
 }
 
 export function createSSE() {
   const ts = new TransformStream<Uint8Array, Uint8Array>();
   const writer = ts.writable.getWriter();
   const encoder = new TextEncoder();
-
-  const headers = new Headers({
+  const headers = withCors(new Headers({
     "content-type": "text/event-stream; charset=utf-8",
     "cache-control": "no-cache",
     connection: "keep-alive",
-  });
-  Object.entries(CORS_HEADERS).forEach(([k, v]) => headers.set(k, v));
+  }));
 
-  const response = new Response(ts.readable, { status: 200, headers });
-
-  async function write(event: string, data?: unknown) {
-    let chunk = "";
-    if (event) chunk += `event: ${event}\n`;
-    if (data !== undefined) chunk += `data: ${JSON.stringify(data)}\n`;
-    chunk += `\n`;
-    await writer.write(encoder.encode(chunk));
-  }
-
-  async function close() {
-    await writer.close();
-  }
-
-  return { response, write, close };
+  return {
+    response: new Response(ts.readable, { status: 200, headers }),
+    write: async (event: string, data?: unknown) => {
+      await writer.write(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+    },
+    close: () => writer.close(),
+  };
 }
