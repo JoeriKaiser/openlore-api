@@ -1,8 +1,25 @@
-import { migrate } from "drizzle-orm/bun-sqlite/migrator";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
+import pg from "pg";
+import { config } from "./env";
 
-import { drizzle } from "drizzle-orm/bun-sqlite";
-import { Database } from "bun:sqlite";
+async function runMigrations() {
+  const pool = new pg.Pool({
+    connectionString: config.databaseUrl,
+  });
 
-const sqlite = new Database("sqlite.db");
-const db = drizzle(sqlite);
-migrate(db, { migrationsFolder: "./drizzle" });
+  const db = drizzle(pool);
+
+  console.log("🔄 Running migrations...");
+
+  await migrate(db, { migrationsFolder: "./drizzle" });
+
+  console.log("✅ Migrations complete!");
+
+  await pool.end();
+}
+
+runMigrations().catch((err) => {
+  console.error("❌ Migration failed:", err);
+  process.exit(1);
+});

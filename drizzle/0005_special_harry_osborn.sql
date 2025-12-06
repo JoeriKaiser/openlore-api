@@ -1,1 +1,0 @@
-ALTER TABLE `session` ADD `token` text NOT NULL;

@@ -1,1 +1,0 @@
-ALTER TABLE `account` ADD `createdAt` integer DEFAULT CURRENT_TIMESTAMP NOT NULL;

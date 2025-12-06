@@ -39,6 +39,9 @@ const ragTopK = Number(env.RAG_TOP_K ?? 6);
 const ragChunkTokens = Number(env.RAG_CHUNK_TOKENS ?? 240);
 const ragChunkOverlapTokens = Number(env.RAG_CHUNK_OVERLAP_TOKENS ?? 40);
 
+const databaseUrl =
+  env.DATABASE_URL ?? "postgresql://openlore:openlore_secret@localhost:5432/openlore";
+
 export const config = {
   nodeEnv,
   isProd,
@@ -55,5 +58,6 @@ export const config = {
   embeddingsLocalPath,
   ragTopK,
   ragChunkTokens,
-  ragChunkOverlapTokens
+  ragChunkOverlapTokens,
+  databaseUrl,
 };

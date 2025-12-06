@@ -1,188 +1,174 @@
 import { sql, relations } from "drizzle-orm";
 import {
   integer,
-  sqliteTable,
+  pgTable,
   text,
+  boolean,
+  timestamp,
+  serial,
   index,
-  uniqueIndex
-} from "drizzle-orm/sqlite-core";
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 
-export const user = sqliteTable("user", {
+export const user = pgTable("user", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
-  emailVerified: integer("emailVerified", { mode: "boolean" })
-    .notNull()
-    .default(false),
+  emailVerified: boolean("email_verified").notNull().default(false),
   image: text("image"),
-  createdAt: integer("createdAt", { mode: "timestamp" }).notNull(),
-  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull()
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-export const characters = sqliteTable(
+export const characters = pgTable(
   "characters",
   {
-    id: integer("id", { mode: "number" }).primaryKey({
-      autoIncrement: true
-    }),
+    id: serial("id").primaryKey(),
     name: text("name").notNull(),
     bio: text("bio"),
-    userId: text("userId")
+    userId: text("user_id")
       .notNull()
-      .references(() => user.id),
-    createdAt: text("created_at")
-      .default(sql`CURRENT_TIMESTAMP`)
-      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => ({
     nameIdx: index("characters_name_idx").on(t.name),
     userIdIdx: index("characters_user_id_idx").on(t.userId),
-    createdAtIdx: index("characters_created_at_idx").on(t.createdAt)
+    createdAtIdx: index("characters_created_at_idx").on(t.createdAt),
   })
 );
 
-export const lore = sqliteTable(
+export const lore = pgTable(
   "lore",
   {
-    id: integer("id", { mode: "number" }).primaryKey({
-      autoIncrement: true
-    }),
+    id: serial("id").primaryKey(),
     title: text("title").notNull(),
     content: text("content").notNull(),
-    userId: text("userId")
+    userId: text("user_id")
       .notNull()
-      .references(() => user.id),
-    createdAt: text("created_at")
-      .default(sql`CURRENT_TIMESTAMP`)
-      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => ({
     titleIdx: index("lore_title_idx").on(t.title),
     userIdIdx: index("lore_user_id_idx").on(t.userId),
-    createdAtIdx: index("lore_created_at_idx").on(t.createdAt)
+    createdAtIdx: index("lore_created_at_idx").on(t.createdAt),
   })
 );
 
-export const session = sqliteTable("session", {
+export const session = pgTable("session", {
   id: text("id").primaryKey(),
   token: text("token").notNull(),
-  expiresAt: integer("expiresAt", { mode: "timestamp" }).notNull(),
-  ipAddress: text("ipAddress"),
-  userAgent: text("userAgent"),
-  userId: text("userId")
+  expiresAt: timestamp("expires_at").notNull(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  userId: text("user_id")
     .notNull()
-    .references(() => user.id),
-  createdAt: integer("createdAt", { mode: "timestamp" })
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: integer("updatedAt", { mode: "timestamp" })
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`)
+    .references(() => user.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-export const account = sqliteTable("account", {
+export const account = pgTable("account", {
   id: text("id").primaryKey(),
-  accountId: text("accountId").notNull(),
-  providerId: text("providerId").notNull(),
-  userId: text("userId")
+  accountId: text("account_id").notNull(),
+  providerId: text("provider_id").notNull(),
+  userId: text("user_id")
     .notNull()
-    .references(() => user.id),
-  accessToken: text("accessToken"),
-  refreshToken: text("refreshToken"),
-  idToken: text("idToken"),
-  expiresAt: integer("expiresAt", { mode: "timestamp" }),
+    .references(() => user.id, { onDelete: "cascade" }),
+  accessToken: text("access_token"),
+  refreshToken: text("refresh_token"),
+  idToken: text("id_token"),
+  expiresAt: timestamp("expires_at"),
   password: text("password"),
-  createdAt: integer("createdAt", { mode: "timestamp" })
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: integer("updatedAt", { mode: "timestamp" })
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`)
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-export const verification = sqliteTable("verification", {
+export const verification = pgTable("verification", {
   id: text("id").primaryKey(),
   identifier: text("identifier").notNull(),
   value: text("value").notNull(),
-  expiresAt: integer("expiresAt", { mode: "timestamp" }).notNull()
+  expiresAt: timestamp("expires_at").notNull(),
 });
 
-export const aiProviderKey = sqliteTable(
+export const aiProviderKey = pgTable(
   "ai_provider_key",
   {
-    id: integer("id", { mode: "number" }).primaryKey({ autoIncrement: true }),
-    userId: text("userId")
+    id: serial("id").primaryKey(),
+    userId: text("user_id")
       .notNull()
-      .references(() => user.id),
+      .references(() => user.id, { onDelete: "cascade" }),
     provider: text("provider").notNull(),
-    encryptedKey: text("encryptedKey").notNull(),
-    keyHash: text("keyHash").notNull(),
+    encryptedKey: text("encrypted_key").notNull(),
+    keyHash: text("key_hash").notNull(),
     last4: text("last4").notNull(),
-    createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
-    updatedAt: text("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull()
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (t) => ({
-    userProviderUIdx: uniqueIndex(
-      "ai_provider_key_user_provider_uidx"
-    ).on(t.userId, t.provider)
+    userProviderUIdx: uniqueIndex("ai_provider_key_user_provider_uidx").on(
+      t.userId,
+      t.provider
+    ),
   })
 );
 
-export const chats = sqliteTable(
+export const chats = pgTable(
   "chats",
   {
-    id: integer("id", { mode: "number" }).primaryKey({ autoIncrement: true }),
-    userId: text("userId")
+    id: serial("id").primaryKey(),
+    userId: text("user_id")
       .notNull()
-      .references(() => user.id),
+      .references(() => user.id, { onDelete: "cascade" }),
     title: text("title"),
     model: text("model").notNull(),
-    characterId: integer("characterId", { mode: "number" }),
-    createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
-    updatedAt: text("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull()
+    characterId: integer("character_id"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (t) => ({
     userIdx: index("chats_user_idx").on(t.userId),
-    updatedAtIdx: index("chats_updated_at_idx").on(t.updatedAt)
+    updatedAtIdx: index("chats_updated_at_idx").on(t.updatedAt),
   })
 );
 
-export const messages = sqliteTable(
+export const messages = pgTable(
   "messages",
   {
-    id: integer("id", { mode: "number" }).primaryKey({ autoIncrement: true }),
-    chatId: integer("chatId", { mode: "number" }).notNull(),
-    userId: text("userId")
+    id: serial("id").primaryKey(),
+    chatId: integer("chat_id").notNull(),
+    userId: text("user_id")
       .notNull()
-      .references(() => user.id),
+      .references(() => user.id, { onDelete: "cascade" }),
     role: text("role").notNull(),
     content: text("content").notNull(),
-    createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull()
+    createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => ({
     chatIdx: index("messages_chat_idx").on(t.chatId),
-    createdAtIdx: index("messages_created_at_idx").on(t.createdAt)
+    createdAtIdx: index("messages_created_at_idx").on(t.createdAt),
   })
 );
 
-export const ragChunks = sqliteTable(
+export const ragChunks = pgTable(
   "rag_chunks",
   {
-    id: integer("id", { mode: "number" }).primaryKey({ autoIncrement: true }),
-    userId: text("userId")
+    id: serial("id").primaryKey(),
+    userId: text("user_id")
       .notNull()
-      .references(() => user.id),
-    sourceType: text("sourceType").notNull(),
-    sourceId: integer("sourceId", { mode: "number" }),
-    chatId: integer("chatId", { mode: "number" }),
-    characterId: integer("characterId", { mode: "number" }),
+      .references(() => user.id, { onDelete: "cascade" }),
+    sourceType: text("source_type").notNull(),
+    sourceId: integer("source_id"),
+    chatId: integer("chat_id"),
+    characterId: integer("character_id"),
     title: text("title"),
     content: text("content").notNull(),
     embedding: text("embedding").notNull(),
-    tokenCount: integer("tokenCount", { mode: "number" }),
+    tokenCount: integer("token_count"),
     hash: text("hash").notNull(),
-    createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
-    updatedAt: text("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull()
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (t) => ({
     userIdx: index("rag_user_idx").on(t.userId),
@@ -194,7 +180,7 @@ export const ragChunks = sqliteTable(
       t.sourceType,
       t.sourceId,
       t.hash
-    )
+    ),
   })
 );
 
@@ -202,58 +188,58 @@ export const userRelations = relations(user, ({ many }) => ({
   characters: many(characters),
   lore: many(lore),
   sessions: many(session),
-  accounts: many(account)
+  accounts: many(account),
 }));
 
 export const charactersRelations = relations(characters, ({ one }) => ({
   user: one(user, {
     fields: [characters.userId],
-    references: [user.id]
-  })
+    references: [user.id],
+  }),
 }));
 
 export const loreRelations = relations(lore, ({ one }) => ({
   user: one(user, {
     fields: [lore.userId],
-    references: [user.id]
-  })
+    references: [user.id],
+  }),
 }));
 
 export const sessionRelations = relations(session, ({ one }) => ({
   user: one(user, {
     fields: [session.userId],
-    references: [user.id]
-  })
+    references: [user.id],
+  }),
 }));
 
 export const accountRelations = relations(account, ({ one }) => ({
   user: one(user, {
     fields: [account.userId],
-    references: [user.id]
-  })
+    references: [user.id],
+  }),
 }));
 
 export const chatRelations = relations(chats, ({ one, many }) => ({
   user: one(user, {
     fields: [chats.userId],
-    references: [user.id]
+    references: [user.id],
   }),
   character: one(characters, {
     fields: [chats.characterId],
-    references: [characters.id]
+    references: [characters.id],
   }),
-  messages: many(messages)
+  messages: many(messages),
 }));
 
 export const messageRelations = relations(messages, ({ one }) => ({
   chat: one(chats, {
     fields: [messages.chatId],
-    references: [chats.id]
+    references: [chats.id],
   }),
   user: one(user, {
     fields: [messages.userId],
-    references: [user.id]
-  })
+    references: [user.id],
+  }),
 }));
 
 export type Character = typeof characters.$inferSelect;

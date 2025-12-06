@@ -1,110 +1,12 @@
 {
   "version": "7",
-  "dialect": "sqlite",
+  "dialect": "postgresql",
   "entries": [
     {
       "idx": 0,
-      "version": "6",
-      "when": 1757230345248,
-      "tag": "0000_slippery_gunslinger",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "6",
-      "when": 1757231559563,
-      "tag": "0001_cool_colossus",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "6",
-      "when": 1757233427304,
-      "tag": "0002_silly_warbound",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "6",
-      "when": 1757246707449,
-      "tag": "0003_shallow_the_leader",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "6",
-      "when": 1757246761883,
-      "tag": "0004_amazing_pestilence",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "6",
-      "when": 1757246810440,
-      "tag": "0005_special_harry_osborn",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "6",
-      "when": 1757246842797,
-      "tag": "0006_spooky_selene",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "6",
-      "when": 1757252999319,
-      "tag": "0007_tired_maginty",
-      "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "6",
-      "when": 1757257546234,
-      "tag": "0008_previous_anthem",
-      "breakpoints": true
-    },
-    {
-      "idx": 9,
-      "version": "6",
-      "when": 1757257701146,
-      "tag": "0009_unique_omega_sentinel",
-      "breakpoints": true
-    },
-    {
-      "idx": 10,
-      "version": "6",
-      "when": 1757257757895,
-      "tag": "0010_abandoned_jean_grey",
-      "breakpoints": true
-    },
-    {
-      "idx": 11,
-      "version": "6",
-      "when": 1757341751800,
-      "tag": "0011_robust_lady_deathstrike",
-      "breakpoints": true
-    },
-    {
-      "idx": 12,
-      "version": "6",
-      "when": 1758649854137,
-      "tag": "0012_minor_warbird",
-      "breakpoints": true
-    },
-    {
-      "idx": 13,
-      "version": "6",
-      "when": 1758651897070,
-      "tag": "0013_glorious_franklin_richards",
-      "breakpoints": true
-    },
-    {
-      "idx": 14,
-      "version": "6",
-      "when": 1759179748356,
-      "tag": "0014_violet_pete_wisdom",
+      "version": "7",
+      "when": 1765042545761,
+      "tag": "0000_kind_king_bedlam",
       "breakpoints": true
     }
   ]

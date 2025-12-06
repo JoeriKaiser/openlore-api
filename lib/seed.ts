@@ -24,32 +24,27 @@ async function seed() {
     let user;
     if (existingSeedUser.length === 0) {
       console.log(`👤 Creating seed user: ${seedUserId}`);
-      await db.insert(schema.user).values({
-        id: seedUserId,
-        name: "Seed User",
-        email: seedUserEmail,
-        emailVerified: true,
-        image: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+      const [insertedUser] = await db
+        .insert(schema.user)
+        .values({
+          id: seedUserId,
+          name: "Seed User",
+          email: seedUserEmail,
+          emailVerified: true,
+          image: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning();
       console.log("✅ Seed user created.");
-      user = {
-        id: seedUserId,
-        name: "Seed User",
-        email: seedUserEmail,
-        emailVerified: true,
-        image: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
+      user = insertedUser;
     } else {
       console.log(`👤 Seed user '${seedUserId}' already exists.`);
       user = existingSeedUser[0];
     }
 
     const accountId = `acc_${seedUserId}`;
-    
+
     const existingAccountById = await db
       .select()
       .from(schema.account)
@@ -147,28 +142,32 @@ async function seed() {
     await db.insert(schema.lore).values([
       {
         title: "The One Ring",
-        content: "The master ring created by the Dark Lord Sauron to control all other Rings of Power. It was lost for centuries before being found by Bilbo Baggins.",
+        content:
+          "The master ring created by the Dark Lord Sauron to control all other Rings of Power. It was lost for centuries before being found by Bilbo Baggins.",
         userId: seedUserId,
       },
       {
         title: "The Fellowship",
-        content: "A company formed in Rivendell to destroy the One Ring. It consisted of four hobbits, two men, an elf, a dwarf, and a wizard.",
+        content:
+          "A company formed in Rivendell to destroy the One Ring. It consisted of four hobbits, two men, an elf, a dwarf, and a wizard.",
         userId: seedUserId,
       },
       {
         title: "Gondor",
-        content: "The greatest kingdom of men in Middle-earth, founded by Elendil and his sons after the fall of Númenor.",
+        content:
+          "The greatest kingdom of men in Middle-earth, founded by Elendil and his sons after the fall of Númenor.",
         userId: seedUserId,
       },
       {
         title: "The Shire",
-        content: "A peaceful region inhabited by hobbits, located in the northwest of Middle-earth. Known for its green hills and comfortable hobbit-holes.",
+        content:
+          "A peaceful region inhabited by hobbits, located in the northwest of Middle-earth. Known for its green hills and comfortable hobbit-holes.",
         userId: seedUserId,
       },
     ]);
     console.log("✅ Lore entries inserted.");
 
-    console.log("🔁 Reindexing RAG for seed user...");
+    console.log("🔍 Reindexing RAG for seed user...");
     await reindexAllForUser(seedUserId);
     console.log("✅ RAG reindex complete for seed user.");
 
@@ -179,7 +178,6 @@ async function seed() {
     console.log(`   User ID: ${seedUserId}`);
     console.log(`   Session Token: ${sessionToken}`);
     console.log("\n💡 You can now login to your app using the email and password above.");
-
   } catch (error) {
     console.error("❌ Database seeding failed:", error);
     throw error;

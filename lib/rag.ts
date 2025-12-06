@@ -26,9 +26,7 @@ function sha256(s: string): string {
   return createHash("sha256").update(s).digest("hex");
 }
 
-export function chunkText(
-  text: string
-): { chunk: string; tokens: number }[] {
+export function chunkText(text: string): { chunk: string; tokens: number }[] {
   const ids = encode(text);
   const max = Math.max(50, config.ragChunkTokens);
   const overlap = Math.min(Math.floor(max / 4), config.ragChunkOverlapTokens);
@@ -65,7 +63,7 @@ async function upsertChunk(params: {
     content: params.content,
     embedding: JSON.stringify(params.embedding),
     tokenCount: params.tokenCount ?? null,
-    updatedAt: sql`CURRENT_TIMESTAMP`
+    updatedAt: new Date(),
   };
   await db
     .insert(ragChunks)
@@ -75,9 +73,9 @@ async function upsertChunk(params: {
         ragChunks.userId,
         ragChunks.sourceType,
         ragChunks.sourceId,
-        ragChunks.hash
+        ragChunks.hash,
       ],
-      set: payload
+      set: payload,
     });
 }
 
@@ -112,7 +110,7 @@ export async function indexLoreEntry(params: {
       title: params.title,
       content: c.chunk,
       embedding: emb,
-      tokenCount: c.tokens
+      tokenCount: c.tokens,
     });
   }
 }
@@ -136,7 +134,7 @@ export async function indexCharacterBio(params: {
       title: params.name,
       content: c.chunk,
       embedding: emb,
-      tokenCount: c.tokens
+      tokenCount: c.tokens,
     });
   }
 }
@@ -161,7 +159,7 @@ export async function indexMessageChunk(params: {
       title: null,
       content: c.chunk,
       embedding: emb,
-      tokenCount: c.tokens
+      tokenCount: c.tokens,
     });
   }
 }
@@ -190,7 +188,7 @@ export async function retrieveRAGContext(p: RetrieveParams) {
       id: ragChunks.id,
       title: ragChunks.title,
       content: ragChunks.content,
-      embedding: ragChunks.embedding
+      embedding: ragChunks.embedding,
     })
     .from(ragChunks)
     .where(and(...loreConds));
@@ -204,7 +202,7 @@ export async function retrieveRAGContext(p: RetrieveParams) {
       id: ragChunks.id,
       title: ragChunks.title,
       content: ragChunks.content,
-      embedding: ragChunks.embedding
+      embedding: ragChunks.embedding,
     })
     .from(ragChunks)
     .where(and(...charConds));
@@ -216,7 +214,7 @@ export async function retrieveRAGContext(p: RetrieveParams) {
     .select({
       id: ragChunks.id,
       content: ragChunks.content,
-      embedding: ragChunks.embedding
+      embedding: ragChunks.embedding,
     })
     .from(ragChunks)
     .where(and(...memConds));
@@ -239,17 +237,17 @@ export async function retrieveRAGContext(p: RetrieveParams) {
     lore: bestLore.map(({ row, score }) => ({
       title: (row as any).title ?? null,
       content: (row as any).content as string,
-      score
+      score,
     })),
     characters: bestChars.map(({ row, score }) => ({
       title: (row as any).title ?? null,
       content: (row as any).content as string,
-      score
+      score,
     })),
     memories: bestMems.map(({ row, score }) => ({
       content: (row as any).content as string,
-      score
-    }))
+      score,
+    })),
   };
 }
 
@@ -287,7 +285,7 @@ export async function reindexAllForUser(userId: string) {
       userId,
       id: r.id,
       title: r.title,
-      content: r.content
+      content: r.content,
     });
   }
   const charRows = await db
@@ -300,7 +298,7 @@ export async function reindexAllForUser(userId: string) {
       userId,
       id: r.id,
       name: r.name,
-      bio: r.bio ?? null
+      bio: r.bio ?? null,
     });
   }
 }
