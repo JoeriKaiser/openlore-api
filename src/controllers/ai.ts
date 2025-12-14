@@ -147,6 +147,7 @@ export async function chatStream(req: Request) {
 
   const { response, write, close } = createSSE();
   let assistantText = "";
+  let reasoningText = "";
 
   (async () => {
     try {
@@ -167,19 +168,42 @@ export async function chatStream(req: Request) {
             const data = line.slice(5).trim();
             if (data === "[DONE]") break;
             try {
-              const delta = JSON.parse(data)?.choices?.[0]?.delta?.content ?? "";
-              if (delta) { assistantText += delta; await write("chunk", { delta }); }
+              const parsed = JSON.parse(data);
+              const delta = parsed?.choices?.[0]?.delta;
+              
+              if (delta?.reasoning) {
+                reasoningText += delta.reasoning;
+                await write("reasoning", { delta: delta.reasoning });
+              }
+              
+              if (delta?.content) {
+                assistantText += delta.content;
+                await write("chunk", { delta: delta.content });
+              }
             } catch {}
           }
         }
       }
 
-      const [msg] = await db.insert(messages).values({ chatId, userId: user.id, role: "assistant", content: assistantText }).returning({ id: messages.id });
+      const [msg] = await db.insert(messages).values({ 
+        chatId, 
+        userId: user.id, 
+        role: "assistant", 
+        content: assistantText,
+        reasoning: reasoningText || null
+      }).returning({ id: messages.id });
+      
       void indexMessageChunk({ userId: user.id, chatId, characterId, role: "assistant", content: assistantText });
       await db.update(chats).set({ updatedAt: sql`CURRENT_TIMESTAMP` }).where(eq(chats.id, chatId));
-      await write("done", { chatId, messageId: msg?.id, preview: assistantText.slice(0, 120) });
-    } catch (e: any) {
-      try { await write("error", { message: e.message }); } catch {}
+      await write("done", { 
+        chatId, 
+        messageId: msg?.id, 
+        preview: assistantText.slice(0, 120),
+        hasReasoning: !!reasoningText
+      });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Unknown error";
+      try { await write("error", { message }); } catch {}
     } finally {
       try { await close(); } catch {}
     }
@@ -205,7 +229,7 @@ export async function getChatMessages(req: Request, idParam: string) {
   const [chat] = await db.select({ id: chats.id }).from(chats).where(and(eq(chats.id, id), eq(chats.userId, user.id))).limit(1);
   if (!chat) return json({ error: "Not Found" }, 404);
 
-  const rows = await db.select({ id: messages.id, role: messages.role, content: messages.content, createdAt: messages.createdAt })
+  const rows = await db.select({ id: messages.id, role: messages.role, content: messages.content, reasoning: messages.reasoning, createdAt: messages.createdAt })
     .from(messages).where(eq(messages.chatId, id)).orderBy(messages.id);
   return json(rows);
 }
@@ -217,7 +241,7 @@ export async function updateChat(req: Request, idParam: string) {
   if (!Number.isFinite(id)) return badRequest("Invalid id");
 
   const body = await readJson<{ title?: string; model?: string }>(req).catch(() => ({}));
-  const patch: any = {};
+  const patch: Record<string, string> = {};
   if (body.title !== undefined) patch.title = trimTitle(body.title);
   if (body.model !== undefined) patch.model = body.model;
   if (!Object.keys(patch).length) return badRequest("No fields to update");

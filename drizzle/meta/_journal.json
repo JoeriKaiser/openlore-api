@@ -8,6 +8,13 @@
       "when": 1765042545761,
       "tag": "0000_kind_king_bedlam",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1765730231548,
+      "tag": "0001_slow_arclight",
+      "breakpoints": true
     }
   ]
 }
