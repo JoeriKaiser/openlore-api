@@ -2,6 +2,7 @@ import { Router } from "./utils/router";
 import { json, CORS_HEADERS, noContent, notFound } from "./utils/http";
 import { registerRoutes } from "./routes";
 import { config } from "../lib/env";
+import { startJobProcessor } from "../lib/jobQueue";
 
 const router = new Router();
 registerRoutes(router);
@@ -34,3 +35,20 @@ Bun.serve({
 });
 
 console.log(`OpenLore API listening on http://localhost:${config.port}`);
+
+// Start background job processor
+const stopJobProcessor = await startJobProcessor(1000);
+console.log("[JobQueue] Background job processor started");
+
+// Handle graceful shutdown
+process.on("SIGINT", () => {
+  console.log("\nShutting down gracefully...");
+  stopJobProcessor();
+  process.exit(0);
+});
+
+process.on("SIGTERM", () => {
+  console.log("\nShutting down gracefully...");
+  stopJobProcessor();
+  process.exit(0);
+});

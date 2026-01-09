@@ -2,8 +2,8 @@ import { createHash } from "crypto";
 import { encode, decode } from "gpt-tokenizer";
 import { db } from "./db";
 import { ragChunks, characters, lore } from "./schema";
-import { and, eq, inArray } from "drizzle-orm";
-import { embedText } from "./embeddings";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import { embedText } from "./embeddingCache";
 import { config } from "./env";
 
 type SourceType = "lore" | "character" | "message" | "memory";
@@ -41,7 +41,7 @@ async function upsertChunk(p: {
   const payload = {
     userId: p.userId, sourceType: p.sourceType, sourceId: p.sourceId ?? null,
     chatId: p.chatId ?? null, characterId: p.characterId ?? null, title: p.title ?? null,
-    content: p.content, embedding: JSON.stringify(p.embedding),
+    content: p.content, embedding: p.embedding,
     tokenCount: p.tokenCount ?? null, updatedAt: new Date(),
   };
   await db.insert(ragChunks)
@@ -59,9 +59,14 @@ export async function deleteChunksForSource(userId: string, sourceType: SourceTy
 }
 
 async function indexChunks(userId: string, sourceType: SourceType, sourceId: number, title: string | null, text: string, characterId?: number | null) {
-  for (const c of chunkText(text)) {
-    const emb = await embedText({ text: c.chunk });
-    await upsertChunk({ userId, sourceType, sourceId, characterId, title, content: c.chunk, embedding: emb, tokenCount: c.tokens });
+  try {
+    for (const c of chunkText(text)) {
+      const emb = await embedText({ text: c.chunk });
+      await upsertChunk({ userId, sourceType, sourceId, characterId, title, content: c.chunk, embedding: emb, tokenCount: c.tokens });
+    }
+  } catch (error) {
+    console.error(`[RAG] Failed to index ${sourceType} #${sourceId} for user ${userId}:`, error);
+    throw error;
   }
 }
 
@@ -72,36 +77,59 @@ export const indexCharacterBio = (p: { userId: string; id: number; name: string;
   indexChunks(p.userId, "character", p.id, p.name, `Character: ${p.name}${p.bio ? `\n\nBio: ${p.bio}` : ""}`, p.id);
 
 export async function indexMessageChunk(p: { userId: string; chatId: number; characterId?: number | null; role: "user" | "assistant"; content: string }) {
-  const prefix = p.role === "user" ? "User" : "Assistant";
-  for (const c of chunkText(`${prefix}: ${p.content}`)) {
-    const emb = await embedText({ text: c.chunk });
-    await upsertChunk({ userId: p.userId, sourceType: "message", chatId: p.chatId, characterId: p.characterId, content: c.chunk, embedding: emb, tokenCount: c.tokens });
+  try {
+    const prefix = p.role === "user" ? "User" : "Assistant";
+    for (const c of chunkText(`${prefix}: ${p.content}`)) {
+      const emb = await embedText({ text: c.chunk });
+      await upsertChunk({ userId: p.userId, sourceType: "message", chatId: p.chatId, characterId: p.characterId, content: c.chunk, embedding: emb, tokenCount: c.tokens });
+    }
+  } catch (error) {
+    console.error(`[RAG] Failed to index message for chat #${p.chatId}, user ${p.userId}:`, error);
+    throw error;
   }
 }
 
 export async function retrieveRAGContext(p: { userId: string; query: string; chatId?: number | null; characterId?: number | null; loreIds?: number[] | null; topK?: number }) {
   const topK = p.topK ?? config.ragTopK;
   const qEmb = await embedText({ text: p.query });
+
+  // Convert similarity threshold to distance threshold (cosine distance = 1 - cosine similarity)
+  const maxDistance = 1 - config.ragMinScore;
+
   const base = [eq(ragChunks.userId, p.userId)];
-  const cols = { id: ragChunks.id, title: ragChunks.title, content: ragChunks.content, embedding: ragChunks.embedding };
 
-  const fetchRows = async (type: SourceType, extra: any[] = []) =>
-    db.select(cols).from(ragChunks).where(and(...base, eq(ragChunks.sourceType, type), ...extra));
+  // Helper to fetch and rank using pgvector's native distance operator
+  const fetchRanked = async (type: SourceType, extra: any[] = []) => {
+    const distance = sql<number>`${ragChunks.embedding} <=> ${JSON.stringify(qEmb)}::vector`;
 
-  const rank = <T extends { embedding: string }>(rows: T[]) =>
-    rows.map(r => ({ row: r, score: cosine(qEmb, JSON.parse(r.embedding)) }))
-      .sort((a, b) => b.score - a.score).slice(0, topK);
+    const rows = await db
+      .select({
+        id: ragChunks.id,
+        title: ragChunks.title,
+        content: ragChunks.content,
+        distance,
+      })
+      .from(ragChunks)
+      .where(and(...base, eq(ragChunks.sourceType, type), sql`${distance} <= ${maxDistance}`, ...extra))
+      .orderBy(distance)
+      .limit(topK);
 
-  const loreRows = await fetchRows("lore", p.loreIds?.length ? [inArray(ragChunks.sourceId, p.loreIds)] : []);
-  const charRows = await fetchRows("character", p.characterId ? [eq(ragChunks.characterId, p.characterId)] : []);
-  const memConds = [p.chatId && eq(ragChunks.chatId, p.chatId), p.characterId && eq(ragChunks.characterId, p.characterId)].filter(Boolean) as any[];
-  const memRows = await fetchRows("message", memConds);
-
-  return {
-    lore: rank(loreRows).map(({ row, score }) => ({ title: row.title, content: row.content, score })),
-    characters: rank(charRows).map(({ row, score }) => ({ title: row.title, content: row.content, score })),
-    memories: rank(memRows).map(({ row, score }) => ({ content: row.content, score })),
+    // Convert distance back to similarity score (1 - distance)
+    return rows.map(r => ({ title: r.title, content: r.content, score: 1 - r.distance }));
   };
+
+  const [lore, characters, memories] = await Promise.all([
+    // Always search all lore for semantic similarity, don't filter by loreIds
+    // This ensures newly added lore is discoverable even in old chats
+    fetchRanked("lore", []),
+    fetchRanked("character", p.characterId ? [eq(ragChunks.characterId, p.characterId)] : []),
+    (async () => {
+      const memConds = [p.chatId && eq(ragChunks.chatId, p.chatId), p.characterId && eq(ragChunks.characterId, p.characterId)].filter(Boolean) as any[];
+      return fetchRanked("message", memConds);
+    })(),
+  ]);
+
+  return { lore, characters, memories };
 }
 
 export function composeRagSystemPrompt(r: Awaited<ReturnType<typeof retrieveRAGContext>>) {

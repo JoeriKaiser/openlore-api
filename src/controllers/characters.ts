@@ -1,6 +1,6 @@
 import { characters } from "../../lib/schema";
 import { createCrudHandlers } from "../utils/crud";
-import { indexCharacterBio, deleteChunksForSource } from "../../lib/rag";
+import { enqueueJob } from "../../lib/jobQueue";
 
 const handlers = createCrudHandlers({
   table: characters,
@@ -8,15 +8,19 @@ const handlers = createCrudHandlers({
   userIdField: characters.userId,
   validateCreate: (b) => (!b.name?.trim() ? "name is required" : null),
   onAfterCreate: (userId, row) => {
-    void indexCharacterBio({ userId, id: row.id, name: row.name, bio: row.bio });
-  },
-  onAfterUpdate: (userId, row) => {
-    void deleteChunksForSource(userId, "character", row.id).then(() =>
-      indexCharacterBio({ userId, id: row.id, name: row.name, bio: row.bio })
+    enqueueJob(userId, "index_character", { userId, id: row.id, name: row.name, bio: row.bio }).catch(err =>
+      console.error(`[Characters] Failed to enqueue indexing job for character #${row.id}:`, err)
     );
   },
+  onAfterUpdate: (userId, row) => {
+    enqueueJob(userId, "delete_chunks", { userId, sourceType: "character", sourceId: row.id })
+      .then(() => enqueueJob(userId, "index_character", { userId, id: row.id, name: row.name, bio: row.bio }))
+      .catch(err => console.error(`[Characters] Failed to enqueue reindexing job for character #${row.id}:`, err));
+  },
   onAfterDelete: (userId, id) => {
-    void deleteChunksForSource(userId, "character", id);
+    enqueueJob(userId, "delete_chunks", { userId, sourceType: "character", sourceId: id }).catch(err =>
+      console.error(`[Characters] Failed to enqueue deletion job for character #${id}:`, err)
+    );
   },
 });
 

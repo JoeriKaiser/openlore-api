@@ -8,7 +8,23 @@ import {
   serial,
   index,
   uniqueIndex,
+  customType,
 } from "drizzle-orm/pg-core";
+
+const vector = customType<{ data: number[]; config: { dimensions: number } }>({
+  dataType(config) {
+    return `vector(${config?.dimensions ?? 384})`;
+  },
+  toDriver(value: number[]): string {
+    return JSON.stringify(value);
+  },
+  fromDriver(value: unknown): number[] {
+    if (typeof value === "string") {
+      return JSON.parse(value);
+    }
+    return value as number[];
+  },
+});
 
 export const user = pgTable("user", {
   id: text("id").primaryKey(),
@@ -161,11 +177,11 @@ export const ragChunks = pgTable(
       .references(() => user.id, { onDelete: "cascade" }),
     sourceType: text("source_type").notNull(),
     sourceId: integer("source_id"),
-    chatId: integer("chat_id"),
-    characterId: integer("character_id"),
+    chatId: integer("chat_id").references(() => chats.id, { onDelete: "cascade" }),
+    characterId: integer("character_id").references(() => characters.id, { onDelete: "cascade" }),
     title: text("title"),
     content: text("content").notNull(),
-    embedding: text("embedding").notNull(),
+    embedding: vector("embedding", { dimensions: 384 }).notNull(),
     tokenCount: integer("token_count"),
     hash: text("hash").notNull(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -182,6 +198,30 @@ export const ragChunks = pgTable(
       t.sourceId,
       t.hash
     ),
+  })
+);
+
+export const indexingJobs = pgTable(
+  "indexing_jobs",
+  {
+    id: serial("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    jobType: text("job_type").notNull(),
+    status: text("status").notNull().default("pending"),
+    payload: text("payload").notNull(),
+    retryCount: integer("retry_count").notNull().default(0),
+    maxRetries: integer("max_retries").notNull().default(3),
+    error: text("error"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+    processedAt: timestamp("processed_at"),
+  },
+  (t) => ({
+    userIdx: index("indexing_jobs_user_idx").on(t.userId),
+    statusIdx: index("indexing_jobs_status_idx").on(t.status),
+    createdAtIdx: index("indexing_jobs_created_at_idx").on(t.createdAt),
   })
 );
 
@@ -256,3 +296,5 @@ export type AIProviderKey = typeof aiProviderKey.$inferSelect;
 export type Chat = typeof chats.$inferSelect;
 export type Message = typeof messages.$inferSelect;
 export type RagChunk = typeof ragChunks.$inferSelect;
+export type IndexingJob = typeof indexingJobs.$inferSelect;
+export type NewIndexingJob = typeof indexingJobs.$inferInsert;

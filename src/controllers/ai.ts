@@ -6,7 +6,8 @@ import { getCurrentUser } from "../utils/auth";
 import { encryptString, decryptString } from "../../lib/crypto";
 import { config } from "../../lib/env";
 import { hashPassword } from "better-auth/crypto";
-import { retrieveRAGContext, composeRagSystemPrompt, indexMessageChunk, indexLoreEntry } from "../../lib/rag";
+import { retrieveRAGContext, composeRagSystemPrompt } from "../../lib/rag";
+import { enqueueJob, processPendingJobsForUser } from "../../lib/jobQueue";
 
 const trimTitle = (s: string, len = 80) => {
   const t = s.trim().replace(/\s+/g, " ");
@@ -128,10 +129,15 @@ export async function chatStream(req: Request) {
   }
 
   await db.insert(messages).values({ chatId, userId: user.id, role: "user", content: userMessage });
-  void indexMessageChunk({ userId: user.id, chatId, characterId, role: "user", content: userMessage });
+  enqueueJob(user.id, "index_message", { userId: user.id, chatId, characterId, role: "user", content: userMessage }).catch(err =>
+    console.error(`[AI] Failed to enqueue indexing job for user message in chat #${chatId}:`, err)
+  );
 
   const history = await db.select({ role: messages.role, content: messages.content })
     .from(messages).where(eq(messages.chatId, chatId)).orderBy(messages.id);
+
+  // Process any pending indexing jobs for this user to ensure recent lore/character updates are available
+  await processPendingJobsForUser(user.id);
 
   const systemParts = [body.system?.trim(), ...await loadContext(user.id, characterId, body.loreIds)].filter(Boolean) as string[];
   const rag = await retrieveRAGContext({ userId: user.id, query: userMessage, chatId, characterId, loreIds: body.loreIds, topK: config.ragTopK });
@@ -185,15 +191,17 @@ export async function chatStream(req: Request) {
         }
       }
 
-      const [msg] = await db.insert(messages).values({ 
-        chatId, 
-        userId: user.id, 
-        role: "assistant", 
+      const [msg] = await db.insert(messages).values({
+        chatId,
+        userId: user.id,
+        role: "assistant",
         content: assistantText,
         reasoning: reasoningText || null
       }).returning({ id: messages.id });
-      
-      void indexMessageChunk({ userId: user.id, chatId, characterId, role: "assistant", content: assistantText });
+
+      enqueueJob(user.id, "index_message", { userId: user.id, chatId, characterId, role: "assistant", content: assistantText }).catch(err =>
+        console.error(`[AI] Failed to enqueue indexing job for assistant message in chat #${chatId}:`, err)
+      );
       await db.update(chats).set({ updatedAt: sql`CURRENT_TIMESTAMP` }).where(eq(chats.id, chatId));
       await write("done", { 
         chatId, 
@@ -291,7 +299,9 @@ export async function extractLore(req: Request) {
 
   if (body.title && body.content && body.save) {
     const [saved] = await db.insert(loreTable).values({ title: body.title, content: body.content, userId: user.id }).returning();
-    void indexLoreEntry({ userId: user.id, id: saved.id, title: saved.title, content: saved.content });
+    enqueueJob(user.id, "index_lore", { userId: user.id, id: saved.id, title: saved.title, content: saved.content }).catch(err =>
+      console.error(`[AI] Failed to enqueue indexing job for extracted lore #${saved.id}:`, err)
+    );
     return json({ saved });
   }
 
@@ -332,7 +342,9 @@ Output ONLY a strict JSON object: { "title": string, "content": string }
 
   if (body.save) {
     const [saved] = await db.insert(loreTable).values({ title: String(obj.title), content: String(obj.content), userId: user.id }).returning();
-    void indexLoreEntry({ userId: user.id, id: saved.id, title: saved.title, content: saved.content });
+    enqueueJob(user.id, "index_lore", { userId: user.id, id: saved.id, title: saved.title, content: saved.content }).catch(err =>
+      console.error(`[AI] Failed to enqueue indexing job for extracted lore #${saved.id}:`, err)
+    );
     return json({ saved });
   }
 

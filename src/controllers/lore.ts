@@ -1,6 +1,6 @@
 import { lore } from "../../lib/schema";
 import { createCrudHandlers } from "../utils/crud";
-import { indexLoreEntry, deleteChunksForSource } from "../../lib/rag";
+import { enqueueJob } from "../../lib/jobQueue";
 
 const handlers = createCrudHandlers({
   table: lore,
@@ -8,15 +8,19 @@ const handlers = createCrudHandlers({
   userIdField: lore.userId,
   validateCreate: (b) => (!b.title || !b.content ? "title and content are required" : null),
   onAfterCreate: (userId, row) => {
-    void indexLoreEntry({ userId, id: row.id, title: row.title, content: row.content });
-  },
-  onAfterUpdate: (userId, row) => {
-    void deleteChunksForSource(userId, "lore", row.id).then(() =>
-      indexLoreEntry({ userId, id: row.id, title: row.title, content: row.content })
+    enqueueJob(userId, "index_lore", { userId, id: row.id, title: row.title, content: row.content }).catch(err =>
+      console.error(`[Lore] Failed to enqueue indexing job for lore #${row.id}:`, err)
     );
   },
+  onAfterUpdate: (userId, row) => {
+    enqueueJob(userId, "delete_chunks", { userId, sourceType: "lore", sourceId: row.id })
+      .then(() => enqueueJob(userId, "index_lore", { userId, id: row.id, title: row.title, content: row.content }))
+      .catch(err => console.error(`[Lore] Failed to enqueue reindexing job for lore #${row.id}:`, err));
+  },
   onAfterDelete: (userId, id) => {
-    void deleteChunksForSource(userId, "lore", id);
+    enqueueJob(userId, "delete_chunks", { userId, sourceType: "lore", sourceId: id }).catch(err =>
+      console.error(`[Lore] Failed to enqueue deletion job for lore #${id}:`, err)
+    );
   },
 });
 
