@@ -9,7 +9,6 @@ sqlite.db
 sqlite.db-*
 data/
 models/
-drizzle/
 *.log
 .DS_Store
 coverage
