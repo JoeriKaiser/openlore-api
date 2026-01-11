@@ -4,6 +4,9 @@ import pg from "pg";
 import { config } from "./env";
 
 async function runMigrations() {
+  console.log("🔍 DATABASE_URL length:", config.databaseUrl?.length);
+  console.log("🔍 DATABASE_URL (sanitized):", config.databaseUrl?.replace(/:[^:@]+@/, ':***@'));
+
   const pool = new pg.Pool({
     connectionString: config.databaseUrl,
   });
