@@ -19,6 +19,7 @@ echo "✅ PostgreSQL is ready!"
 
 # Run migrations
 echo "🔄 Running database migrations..."
+echo "🔍 Database URL: ${DATABASE_URL%%:*}://...@${DATABASE_URL##*@}"
 bun run migrate
 
 echo "✅ Migrations complete"
