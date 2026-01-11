@@ -56,6 +56,8 @@ services:
     image: pgvector/pgvector:pg16
     container_name: openlore-postgres
     restart: unless-stopped
+    ports:
+      - "5432:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-openlore}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
