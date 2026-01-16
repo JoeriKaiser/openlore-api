@@ -17,8 +17,8 @@ FROM base AS runner
 ENV NODE_ENV=production
 ENV PORT=3000
 
-# Install postgresql-client for pg_isready
-RUN apt-get update && apt-get install -y postgresql-client && rm -rf /var/lib/apt/lists/*
+# Install postgresql-client for pg_isready and wget for health checks
+RUN apt-get update && apt-get install -y postgresql-client wget && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --system --gid 1001 nodejs && \
     useradd --system --uid 1001 bunuser
