@@ -1,4 +1,5 @@
 // backend/src/utils/auth-errors.ts
+import { json } from "./http";
 
 /**
  * Standard error response structure
@@ -87,13 +88,10 @@ export class RateLimitError extends AuthError {
 }
 
 /**
- * Convert AuthError to HTTP response
+ * Convert AuthError to HTTP response with CORS headers
  */
 export function authErrorResponse(error: AuthError): Response {
-  return new Response(JSON.stringify(error.toJSON()), {
-    status: error.status,
-    headers: { "Content-Type": "application/json" },
-  });
+  return json(error.toJSON(), error.status);
 }
 
 /**

@@ -3,8 +3,9 @@ import { config } from "../../lib/env";
 export const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": config.clientUrl,
   "Access-Control-Allow-Methods": "GET,POST,PATCH,DELETE,OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, Cookie, Set-Cookie, X-Requested-With, Accept, Origin",
   "Access-Control-Allow-Credentials": "true",
+  "Access-Control-Expose-Headers": "Set-Cookie",
   "Access-Control-Max-Age": "86400",
 };
 
