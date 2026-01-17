@@ -3,7 +3,8 @@ import { auth } from "../../lib/auth";
 import { db } from "../../lib/db";
 import { user, session as sessionTable } from "../../lib/schema";
 import { eq, and } from "drizzle-orm";
-import { json, CORS_HEADERS } from "../utils/http";
+import { json, CORS_HEADERS, forbidden } from "../utils/http";
+import { config } from "../../lib/env";
 import {
   AuthError,
   ValidationError,
@@ -45,6 +46,11 @@ export function registerAuthRoutes(router: Router) {
   });
 
   router.on("POST", "/api/auth/passkey/register-start", async ({ req }) => {
+    // Check if registration is enabled
+    if (!config.registrationEnabled) {
+      return withCors(json({ error: "Registration is disabled", code: "REGISTRATION_DISABLED" }, 403));
+    }
+
     try {
       const body = await req.json();
 
@@ -128,6 +134,11 @@ export function registerAuthRoutes(router: Router) {
   });
 
   router.on("POST", "/api/auth/register", async ({ req }) => {
+    // Check if registration is enabled
+    if (!config.registrationEnabled) {
+      return withCors(json({ error: "Registration is disabled", code: "REGISTRATION_DISABLED" }, 403));
+    }
+
     try {
       const body = await req.json();
 

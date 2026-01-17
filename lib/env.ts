@@ -33,4 +33,5 @@ export const config = {
   ragChunkOverlapTokens: Number(env.RAG_CHUNK_OVERLAP_TOKENS ?? 40),
   ragMinScore: Number(env.RAG_MIN_SCORE ?? 0.5),
   databaseUrl: env.DATABASE_URL ?? "postgresql://openlore:openlore_secret@localhost:5432/openlore",
+  registrationEnabled: env.REGISTRATION_ENABLED !== "false",
 };
