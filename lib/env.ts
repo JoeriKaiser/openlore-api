@@ -7,6 +7,7 @@ const toOrigin = (url: string) => {
 const nodeEnv = env.NODE_ENV ?? "development";
 const isProd = nodeEnv === "production";
 const clientUrl = env.CLIENT_URL ?? "http://localhost:5173";
+const rpId = env.PASSKEY_RP_ID ?? new URL(clientUrl).hostname;
 const baseUrl = env.BETTER_AUTH_URL ?? "http://localhost:3000";
 const corsOrigins = (env.CORS_ORIGINS ?? clientUrl).split(",").map(s => s.trim()).filter(Boolean);
 const authSecret = env.BETTER_AUTH_SECRET || env.AUTH_SECRET || "dev-insecure-secret-change-me";
@@ -15,6 +16,7 @@ export const config = {
   nodeEnv,
   isProd,
   clientUrl,
+  rpId,
   baseUrl,
   corsOrigins,
   trustedOrigins: [...new Set([toOrigin(clientUrl), toOrigin(baseUrl), ...corsOrigins.map(toOrigin)])],

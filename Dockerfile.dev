@@ -1,0 +1,24 @@
+FROM oven/bun:1-debian
+
+WORKDIR /app
+
+# Install system dependencies for healthchecks and database tools
+RUN apt-get update && \
+    apt-get install -y postgresql-client wget && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy entrypoint script
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+# Install dependencies (will be cached unless package.json changes)
+COPY package.json bun.lockb* ./
+RUN bun install
+
+# Source code will be mounted as volume
+# Development server started via docker-compose command
+
+EXPOSE 3000
+
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["bun", "run", "dev"]

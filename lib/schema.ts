@@ -106,6 +106,23 @@ export const verification = pgTable("verification", {
   identifier: text("identifier").notNull(),
   value: text("value").notNull(),
   expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const passkey = pgTable("passkey", {
+  id: text("id").primaryKey(),
+  name: text("name"),
+  publicKey: text("public_key").notNull(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  credentialID: text("credential_id").notNull().unique(),
+  counter: integer("counter").notNull(),
+  deviceType: text("device_type").notNull(),
+  backedUp: boolean("backed_up").notNull(),
+  transports: text("transports"),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const aiProviderKey = pgTable(
@@ -230,6 +247,7 @@ export const userRelations = relations(user, ({ many }) => ({
   lore: many(lore),
   sessions: many(session),
   accounts: many(account),
+  passkeys: many(passkey),
 }));
 
 export const charactersRelations = relations(characters, ({ one }) => ({
@@ -256,6 +274,13 @@ export const sessionRelations = relations(session, ({ one }) => ({
 export const accountRelations = relations(account, ({ one }) => ({
   user: one(user, {
     fields: [account.userId],
+    references: [user.id],
+  }),
+}));
+
+export const passkeyRelations = relations(passkey, ({ one }) => ({
+  user: one(user, {
+    fields: [passkey.userId],
     references: [user.id],
   }),
 }));

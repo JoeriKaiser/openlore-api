@@ -1,8 +1,24 @@
 import { Router } from "../utils/router";
 import { auth } from "../../lib/auth";
-import { json, readJson, CORS_HEADERS } from "../utils/http";
-
-const isEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
+import { db } from "../../lib/db";
+import { user, session as sessionTable } from "../../lib/schema";
+import { eq, and } from "drizzle-orm";
+import { json, CORS_HEADERS } from "../utils/http";
+import {
+  AuthError,
+  ValidationError,
+  InvalidCredentialsError,
+  UserAlreadyExistsError,
+  PasskeyError,
+  SessionError,
+  handleAuthError,
+} from "../utils/auth-errors";
+import {
+  registerSchema,
+  loginSchema,
+  passkeyRegisterStartSchema,
+  zodErrorToDetails,
+} from "../schemas/auth";
 
 const withCors = async (res: Response) => {
   const headers = new Headers(res.headers);
@@ -11,41 +27,181 @@ const withCors = async (res: Response) => {
 };
 
 export function registerAuthRoutes(router: Router) {
+  router.on("GET", "/api/auth/session", async ({ req }) => {
+    try {
+      return withCors(await auth.api.getSession({ headers: req.headers, asResponse: true }));
+    } catch (e) {
+      console.error("[Auth] Session fetch error:", e);
+      return json({ user: null, session: null }, 200);
+    }
+  });
+
+  router.on("POST", "/api/auth/logout", async ({ req }) => {
+    try {
+      return withCors(await auth.api.signOut({ headers: req.headers, asResponse: true }));
+    } catch (e) {
+      return handleAuthError(new SessionError("Failed to logout"));
+    }
+  });
+
+  router.on("POST", "/api/auth/passkey/register-start", async ({ req }) => {
+    try {
+      const body = await req.json();
+
+      // Validate request body
+      const validation = passkeyRegisterStartSchema.safeParse(body);
+      if (!validation.success) {
+        const details = zodErrorToDetails(validation.error);
+        return handleAuthError(new ValidationError(details));
+      }
+
+      const { name } = validation.data;
+      const userId = crypto.randomUUID();
+
+      // Create anonymous user
+      try {
+        await db.insert(user).values({
+          id: userId,
+          name,
+          email: `${userId}@anonymous.local`,
+          emailVerified: false,
+        });
+      } catch (e) {
+        console.error("[Auth] User creation error:", e);
+        return handleAuthError(new PasskeyError("Failed to create user"));
+      }
+
+      // Create session with tracking info
+      const sessionToken = crypto.randomUUID();
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      const ipAddress = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown";
+      const userAgent = req.headers.get("user-agent") || "unknown";
+
+      try {
+        await db.insert(sessionTable).values({
+          id: crypto.randomUUID(),
+          token: sessionToken,
+          expiresAt,
+          userId,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      } catch (e) {
+        console.error("[Auth] Session creation error:", e);
+        return handleAuthError(new PasskeyError("Failed to create session"));
+      }
+
+      // Get session via Better Auth
+      const sessionRes = await auth.api.getSession({
+        headers: new Headers({
+          ...Object.fromEntries(req.headers.entries()),
+          cookie: `auth_session=${sessionToken}`,
+        }),
+      });
+
+      const expiresAtStr = expiresAt.toUTCString();
+      return withCors(new Response(JSON.stringify(sessionRes), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Set-Cookie": `auth_session=${sessionToken}; Path=/; HttpOnly; SameSite=Lax; Expires=${expiresAtStr}`,
+          ...CORS_HEADERS,
+        },
+      }));
+    } catch (e) {
+      console.error("[Auth] Passkey register-start error:", e);
+      return handleAuthError(new PasskeyError("Failed to start passkey registration"));
+    }
+  });
+
+  router.on("POST", "/api/auth/passkey/sign-in", async ({ req }) => {
+    try {
+      const body = await req.json();
+      return withCors(await auth.api.signIn.passkey({
+        headers: req.headers,
+        body,
+        asResponse: true,
+      }));
+    } catch (e: any) {
+      return json({ error: e?.message ?? "Login failed" }, 500);
+    }
+  });
+
   router.on("POST", "/api/auth/register", async ({ req }) => {
     try {
-      const { email, password, name, image, callbackURL, rememberMe } = await readJson<any>(req);
-      if (!isEmail(email)) return json({ error: "Valid email is required" }, 400);
-      if ((password ?? "").length < 8) return json({ error: "Password must be at least 8 characters" }, 400);
-      if ((name ?? "").trim().length < 2) return json({ error: "Name must be at least 2 characters" }, 400);
+      const body = await req.json();
 
+      // Validate request body
+      const validation = registerSchema.safeParse(body);
+      if (!validation.success) {
+        const details = zodErrorToDetails(validation.error);
+        return handleAuthError(new ValidationError(details));
+      }
+
+      const { email, password, name } = validation.data;
+
+      // Check if user already exists
+      const [existingUser] = await db.select().from(user).where(eq(user.email, email));
+
+      if (existingUser) {
+        return handleAuthError(new UserAlreadyExistsError(`User with email ${email} already exists`));
+      }
+
+      // Delegate to Better Auth for actual registration
       return withCors(await auth.api.signUpEmail({
-        body: { email: email.toLowerCase().trim(), password, name: name.trim(), image, callbackURL, rememberMe },
-        headers: req.headers, asResponse: true,
+        headers: req.headers,
+        body: {
+          email,
+          password,
+          name: name || undefined,
+        },
+        asResponse: true,
       }));
-    } catch (e: any) { return json({ error: e?.message ?? "Registration failed" }, 400); }
+    } catch (e) {
+      console.error("[Auth] Register error:", e);
+      if (e instanceof AuthError) {
+        return handleAuthError(e);
+      }
+      return handleAuthError(new AuthError("Registration failed"));
+    }
   });
 
   router.on("POST", "/api/auth/login", async ({ req }) => {
     try {
-      const { email, password, callbackURL, rememberMe } = await readJson<any>(req);
-      if (!isEmail(email)) return json({ error: "Valid email is required" }, 401);
-      if (!password) return json({ error: "Password is required" }, 401);
+      const body = await req.json();
 
+      // Validate request body
+      const validation = loginSchema.safeParse(body);
+      if (!validation.success) {
+        const details = zodErrorToDetails(validation.error);
+        return handleAuthError(new ValidationError(details));
+      }
+
+      const { email, password } = validation.data;
+
+      // Verify credentials exist before delegating to Better Auth
+      const [existingUser] = await db.select().from(user).where(eq(user.email, email));
+
+      if (!existingUser) {
+        return handleAuthError(new InvalidCredentialsError());
+      }
+
+      // Delegate to Better Auth for actual login
       return withCors(await auth.api.signInEmail({
-        body: { email: email.toLowerCase().trim(), password, callbackURL, rememberMe },
-        headers: req.headers, asResponse: true,
+        headers: req.headers,
+        body: {
+          email,
+          password,
+        },
+        asResponse: true,
       }));
-    } catch (e: any) { return json({ error: e?.message ?? "Login failed" }, 401); }
-  });
-
-  router.on("GET", "/api/auth/session", async ({ req }) => {
-    try { return withCors(await auth.api.getSession({ headers: req.headers, asResponse: true })); }
-    catch { return json({ user: null, session: null }, 200); }
-  });
-
-  router.on("POST", "/api/auth/logout", async ({ req }) => {
-    try { return withCors(await auth.api.signOut({ headers: req.headers, asResponse: true })); }
-    catch (e: any) { return json({ error: e?.message ?? "Logout failed" }, 500); }
+    } catch (e) {
+      console.error("[Auth] Login error:", e);
+      if (e instanceof AuthError) {
+        return handleAuthError(e);
+      }
+      return handleAuthError(new InvalidCredentialsError());
+    }
   });
 
   router.on("GET", "/api/auth/*", async ({ req }) => withCors(await auth.handler(req)));
