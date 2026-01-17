@@ -24,7 +24,9 @@ import {
 const withCors = async (res: Response) => {
   const headers = new Headers(res.headers);
   Object.entries(CORS_HEADERS).forEach(([k, v]) => headers.set(k, v));
-  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+  // Clone the response to avoid body consumption issues
+  const clonedBody = res.body ? res.clone().body : null;
+  return new Response(clonedBody, { status: res.status, statusText: res.statusText, headers });
 };
 
 export function registerAuthRoutes(router: Router) {
@@ -178,6 +180,7 @@ export function registerAuthRoutes(router: Router) {
   });
 
   router.on("POST", "/api/auth/login", async ({ req }) => {
+    console.log("[Auth] Login attempt from origin:", req.headers.get("origin"));
     try {
       const body = await req.json();
 
@@ -189,6 +192,7 @@ export function registerAuthRoutes(router: Router) {
       }
 
       const { email, password } = validation.data;
+      console.log("[Auth] Login attempt for email:", email);
 
       // Verify credentials exist before delegating to Better Auth
       const [existingUser] = await db.select().from(user).where(eq(user.email, email));
@@ -198,14 +202,21 @@ export function registerAuthRoutes(router: Router) {
       }
 
       // Delegate to Better Auth for actual login
-      return withCors(await auth.api.signInEmail({
+      const betterAuthResponse = await auth.api.signInEmail({
         headers: req.headers,
         body: {
           email,
           password,
         },
         asResponse: true,
-      }));
+      });
+
+      console.log("[Auth] Better Auth response status:", betterAuthResponse.status);
+
+      // Always wrap Better Auth responses with CORS
+      const response = await withCors(betterAuthResponse);
+      console.log("[Auth] Response headers:", Object.fromEntries(response.headers.entries()));
+      return response;
     } catch (e) {
       console.error("[Auth] Login error:", e);
       if (e instanceof AuthError) {
