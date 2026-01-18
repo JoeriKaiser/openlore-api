@@ -3,7 +3,7 @@ import { auth } from "../../lib/auth";
 import { db } from "../../lib/db";
 import { user, session as sessionTable } from "../../lib/schema";
 import { eq, and } from "drizzle-orm";
-import { json, CORS_HEADERS, forbidden } from "../utils/http";
+import { json, getCorsHeaders, serializeSessionCookie } from "../utils/http";
 import { config } from "../../lib/env";
 import {
   AuthError,
@@ -21,9 +21,10 @@ import {
   zodErrorToDetails,
 } from "../schemas/auth";
 
-const withCors = async (res: Response) => {
+const withCors = async (res: Response, req: Request) => {
+  const corsHeaders = getCorsHeaders(req.headers.get("origin"));
   const headers = new Headers(res.headers);
-  Object.entries(CORS_HEADERS).forEach(([k, v]) => headers.set(k, v));
+  Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));
   // Clone the response to avoid body consumption issues
   const clonedBody = res.body ? res.clone().body : null;
   return new Response(clonedBody, { status: res.status, statusText: res.statusText, headers });
@@ -32,7 +33,7 @@ const withCors = async (res: Response) => {
 export function registerAuthRoutes(router: Router) {
   router.on("GET", "/api/auth/session", async ({ req }) => {
     try {
-      return withCors(await auth.api.getSession({ headers: req.headers, asResponse: true }));
+      return withCors(await auth.api.getSession({ headers: req.headers, asResponse: true }), req);
     } catch (e) {
       console.error("[Auth] Session fetch error:", e);
       return json({ user: null, session: null }, 200);
@@ -41,7 +42,7 @@ export function registerAuthRoutes(router: Router) {
 
   router.on("POST", "/api/auth/logout", async ({ req }) => {
     try {
-      return withCors(await auth.api.signOut({ headers: req.headers, asResponse: true }));
+      return withCors(await auth.api.signOut({ headers: req.headers, asResponse: true }), req);
     } catch (e) {
       return handleAuthError(new SessionError("Failed to logout"));
     }
@@ -50,7 +51,7 @@ export function registerAuthRoutes(router: Router) {
   router.on("POST", "/api/auth/passkey/register-start", async ({ req }) => {
     // Check if registration is enabled
     if (!config.registrationEnabled) {
-      return withCors(json({ error: "Registration is disabled", code: "REGISTRATION_DISABLED" }, 403));
+      return withCors(json({ error: "Registration is disabled", code: "REGISTRATION_DISABLED" }, 403), req);
     }
 
     try {
@@ -107,15 +108,15 @@ export function registerAuthRoutes(router: Router) {
         }),
       });
 
-      const expiresAtStr = expiresAt.toUTCString();
+      const corsHeaders = getCorsHeaders(req.headers.get("origin"));
       return withCors(new Response(JSON.stringify(sessionRes), {
         status: 200,
         headers: {
           "Content-Type": "application/json",
-          "Set-Cookie": `auth_session=${sessionToken}; Path=/; HttpOnly; SameSite=Lax; Expires=${expiresAtStr}`,
-          ...CORS_HEADERS,
+          "Set-Cookie": serializeSessionCookie("auth_session", sessionToken, expiresAt),
+          ...corsHeaders,
         },
-      }));
+      }), req);
     } catch (e) {
       console.error("[Auth] Passkey register-start error:", e);
       return handleAuthError(new PasskeyError("Failed to start passkey registration"));
@@ -129,7 +130,7 @@ export function registerAuthRoutes(router: Router) {
         headers: req.headers,
         body,
         asResponse: true,
-      }));
+      }), req);
     } catch (e: any) {
       return json({ error: e?.message ?? "Login failed" }, 500);
     }
@@ -138,7 +139,7 @@ export function registerAuthRoutes(router: Router) {
   router.on("POST", "/api/auth/register", async ({ req }) => {
     // Check if registration is enabled
     if (!config.registrationEnabled) {
-      return withCors(json({ error: "Registration is disabled", code: "REGISTRATION_DISABLED" }, 403));
+      return withCors(json({ error: "Registration is disabled", code: "REGISTRATION_DISABLED" }, 403), req);
     }
 
     try {
@@ -169,7 +170,7 @@ export function registerAuthRoutes(router: Router) {
           name: name || undefined,
         },
         asResponse: true,
-      }));
+      }), req);
     } catch (e) {
       console.error("[Auth] Register error:", e);
       if (e instanceof AuthError) {
@@ -214,7 +215,7 @@ export function registerAuthRoutes(router: Router) {
       console.log("[Auth] Better Auth response status:", betterAuthResponse.status);
 
       // Always wrap Better Auth responses with CORS
-      const response = await withCors(betterAuthResponse);
+      const response = await withCors(betterAuthResponse, req);
       console.log("[Auth] Response headers:", Object.fromEntries(response.headers.entries()));
       return response;
     } catch (e) {
@@ -226,6 +227,6 @@ export function registerAuthRoutes(router: Router) {
     }
   });
 
-  router.on("GET", "/api/auth/*", async ({ req }) => withCors(await auth.handler(req)));
-  router.on("POST", "/api/auth/*", async ({ req }) => withCors(await auth.handler(req)));
+  router.on("GET", "/api/auth/*", async ({ req }) => withCors(await auth.handler(req), req));
+  router.on("POST", "/api/auth/*", async ({ req }) => withCors(await auth.handler(req), req));
 }
